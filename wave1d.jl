@@ -22,8 +22,9 @@ using Interpolations
 using Plots
 using Dates
 using LinearAlgebra
+using Statistics
 
-plot_maps = true #true or false - plotting makes the runs much slower
+plot_maps = false #true or false - plotting makes the runs much slower
 
 minutes_to_seconds = 60.0
 hours_to_seconds = 60.0 * 60.0
@@ -248,7 +249,12 @@ function simulate()
     #plot timeseries
     plot_series(t, series_data, s, observed_data)
 
-    println("ALl figures have been saved to files.")
+    # compute Statistics
+    index_start = 62 # start at second rising tide
+    bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], s) # ignore first data points due to dynamic behaviour in the beginning
+    rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], s) # ignore first data points due to dynamic behaviour in the beginning
+
+    println("All figures have been saved to files.")
     if plot_maps == false
         println("You can plot maps by setting plot_maps to true.")
     else
@@ -256,5 +262,36 @@ function simulate()
         println("This will make the computation much faster.")
     end
 end
+
+function bias_at_locations(data1, data2, s)
+    loc_names = s["loc_names"]
+    nseries = length(loc_names)
+    for i = 1:nseries
+        compute_bias(data1[i, :], data2[i, :], loc_names[i])
+    end
+end
+
+function rmse_at_locations(data1, data2, s)
+    loc_names = s["loc_names"]
+    nseries = length(loc_names)
+    for i = 1:nseries
+        compute_rmse(data1[i, :], data2[i, :], loc_names[i])
+    end
+end
+
+function compute_bias(data1, data2, label)
+    residual = data1 - data2[2:end, :]
+    bias = Statistics.std(residual)
+    println("Bias at $(label): $(bias)")
+    return bias
+end
+
+function compute_rmse(data1, data2, label)
+    residual = data1 - data2[2:end, :]
+    rmse = 1 / length(residual) * sqrt(sum(residual .^ 2))
+    println("RMSE at $(label): $(rmse)")
+    return rmse
+end
+
 
 simulate()
