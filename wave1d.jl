@@ -23,6 +23,8 @@ using Plots
 using Dates
 using LinearAlgebra
 using Statistics
+using Latexify
+using DataFrames
 
 plot_maps = false #true or false - plotting makes the runs much slower
 
@@ -251,8 +253,11 @@ function simulate()
 
     # compute Statistics
     index_start = 62 # start at second rising tide
-    bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], s) # ignore first data points due to dynamic behaviour in the beginning
-    rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], s) # ignore first data points due to dynamic behaviour in the beginning
+    biases = zeros(Float64, length(names))
+    rmses = zeros(Float64, length(names))
+    biases = bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end]) # ignore first data points due to dynamic behaviour in the beginning
+    rmses = rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end]) # ignore first data points due to dynamic behaviour in the beginning
+    build_latex_table_bias_rmse(biases, rmses)
 
     println("All figures have been saved to files.")
     if plot_maps == false
@@ -263,35 +268,54 @@ function simulate()
     end
 end
 
-function bias_at_locations(data1, data2, s)
-    loc_names = s["loc_names"]
-    nseries = length(loc_names)
+function bias_at_locations(data1, data2)
+    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    biases = zeros(Float64, length(names))
+    nseries = length(names)
     for i = 1:nseries
-        compute_bias(data1[i, :], data2[i, :], loc_names[i])
+        biases[i] = compute_bias(data1[i, :], data2[i, :], names[i])
     end
+    return biases
 end
 
-function rmse_at_locations(data1, data2, s)
-    loc_names = s["loc_names"]
-    nseries = length(loc_names)
+function rmse_at_locations(data1, data2)
+    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    nseries = length(names)
+    rmses = zeros(Float64, length(names))
     for i = 1:nseries
-        compute_rmse(data1[i, :], data2[i, :], loc_names[i])
+        rmses[i] = compute_rmse(data1[i, :], data2[i, :], names[i])
     end
+    return rmses
 end
 
 function compute_bias(data1, data2, label)
     residual = data1 - data2[2:end, :]
     bias = Statistics.std(residual)
-    println("Bias at $(label): $(bias)")
+    # println("Bias at $(label): $(bias)")
     return bias
 end
 
 function compute_rmse(data1, data2, label)
     residual = data1 - data2[2:end, :]
     rmse = 1 / length(residual) * sqrt(sum(residual .^ 2))
-    println("RMSE at $(label): $(rmse)")
+    # println("RMSE at $(label): $(rmse)")
     return rmse
 end
 
+function compute_wave_velocity_by_height(xlocs_velocity)
+end
+
+function compute_wave_velocity_by_velocity(xlocs_velocity)
+
+end
+
+function build_latex_table_bias_rmse(biases, rmses)
+    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    df = DataFrame(Locations=names, biases=biases, rmses=rmses)
+    table = latexify(df, env=:table)
+    open("tables/q3_bias_rmse_table.txt", "w") do io
+        println(io, table)
+    end
+end
 
 simulate()
