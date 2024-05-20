@@ -156,9 +156,6 @@ function initialize(s) #return (x,t) at initial time
     B = Tridiagonal(Bdata_l, Bdata_d, Bdata_r)
     s["A"] = A #cache for later use
     s["B"] = B
-    println(sum(B[:,1]))
-    println(maximum(B[1,:]))
-    #s["C"] = inv(A) * B
     return (x, t[1])
 end
 
@@ -166,15 +163,10 @@ function timestep(x, i, settings) #return x one timestep later
     # take one timestep
     A = settings["A"]
     B = settings["B"]
-    #C = settings["C"]
     rhs = B * x
     rhs[1] = settings["h_left"][i] #left boundary
     newx = A \ rhs
-    A_inv = inv(A)
-    e_1 = zeros(Float64, length(x))
-    e_1[1] = 1.0
-    x_new = A_inv * B * x + A_inv * e_1 * settings["h_left"][i]
-    return x_new
+    return newx
 end
 
 function plot_state(x, i, s)
@@ -212,22 +204,22 @@ function simulate()
     s = settings()
     L = s["L"]
     dx = s["dx"]
-    xlocs_waterlevel =  [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L, 0.99 * L]
-    xlocs_velocity =    [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L]
-    ilocs = vcat(map(x -> round(Int, x), xlocs_waterlevel ./ dx) .* 2 .+ 1, map(x -> round(Int, x), xlocs_velocity ./ dx) .* 2 .+ 2)
+    xlocs_tide =  [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L, 0.99 * L]
+    xlocs_waterlevel =    [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L]
+    ilocs = vcat(map(x -> round(Int, x), xlocs_tide ./ dx) .* 2 .+ 1, map(x -> round(Int, x), xlocs_waterlevel ./ dx) .* 2 .+ 2)
     #println(ilocs)
     loc_names = String[]
     names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    for i = 1:length(xlocs_tide)
+        push!(loc_names, "Waterlevel at x=$(0.001*xlocs_tide[i]) km $(names[i])")
+    end
     for i = 1:length(xlocs_waterlevel)
-        push!(loc_names, "Waterlevel at x=$(0.001*xlocs_waterlevel[i]) km $(names[i])")
+        push!(loc_names, "Velocity at x=$(0.001*xlocs_waterlevel[i]) km $(names[i])")
     end
-    for i = 1:length(xlocs_velocity)
-        push!(loc_names, "Velocity at x=$(0.001*xlocs_velocity[i]) km $(names[i])")
-    end
-    s["xlocs_waterlevel"] = xlocs_waterlevel
-    s["xlocs_velocity"] = xlocs_velocity
-    s["ilocs"] = ilocs
-    s["loc_names"] = loc_names
+    s["xlocs_tide"] = xlocs_tide
+    s["xlocs_waterlevel"] =   xlocs_waterlevel
+    s["ilocs"] =            ilocs
+    s["loc_names"] =        loc_names
 
     (x, t0) = initialize(s)
     t = s["t"]
@@ -273,20 +265,20 @@ function simulate()
     end
 end
 
-function initialize_Kalman(x, s)
-    # assemble H matrix for ENKF
-    # H is a matrix that selects the observed locations from the state vector
-    ilocs = s["ilocs"]
-    H = zeros(Float64, length(ilocs), length(x))
-    for i = 1:length(ilocs)
-        H[i, ilocs[i]] = 1.0
-    end
-    #Initial Covariance P_0
-    P_0 = 0.1 * Matrix{Float64}(I, length(x), length(x))
+function Kalman_update(x, y, H, R, P, Q)
+    # Kalman update
+    # x: state vector
+    # y: observation vector
+    # H: observation matrix
+    # R: observation error covariance
+    # P: state error covariance
+    # Q: process noise covariance
+    # return updated state vector and covariance matrix
+    # prediction
 
-    return H, P_0
+    return (x, P)
+    
 end
-
 
 
 function simulate_ENKF(n_ensemble::Int64)
@@ -296,30 +288,28 @@ function simulate_ENKF(n_ensemble::Int64)
     s = settings()
     L = s["L"]
     dx = s["dx"]
-    xlocs_waterlevel =  [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L, 0.99 * L]
-    xlocs_velocity =    [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L]
-    ilocs = vcat(map(x -> round(Int, x), xlocs_waterlevel ./ dx) .* 2 .+ 1, map(x -> round(Int, x), xlocs_velocity ./ dx) .* 2 .+ 2)
+    xlocs_tide =  [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L, 0.99 * L]
+    xlocs_waterlevel =    [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L]
+    ilocs = vcat(map(x -> round(Int, x), xlocs_tide ./ dx) .* 2 .+ 1, map(x -> round(Int, x), xlocs_waterlevel ./ dx) .* 2 .+ 2)
 
     #println(ilocs)
     loc_names = String[]
     names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    for i = 1:length(xlocs_tide)
+        push!(loc_names, "Waterlevel at x=$(0.001*xlocs_tide[i]) km $(names[i])")
+    end
     for i = 1:length(xlocs_waterlevel)
-        push!(loc_names, "Waterlevel at x=$(0.001*xlocs_waterlevel[i]) km $(names[i])")
+        push!(loc_names, "Velocity at x=$(0.001*xlocs_waterlevel[i]) km $(names[i])")
     end
-    for i = 1:length(xlocs_velocity)
-        push!(loc_names, "Velocity at x=$(0.001*xlocs_velocity[i]) km $(names[i])")
-    end
+    s["xlocs_tide"] = xlocs_tide
     s["xlocs_waterlevel"] = xlocs_waterlevel
-    s["xlocs_velocity"] = xlocs_velocity
     s["ilocs"] = ilocs
     s["loc_names"] = loc_names
 
     (x, t0) = initialize(s)
+   
 
     X = zeros(Float64, length(x), n_ensemble)
-
-    H, P_0 = initialize_Kalman(x, s)
-
     for n in n_ensemble
         perturbation = 0.0 * randn(length(x))
         X[:,n] = x + perturbation
@@ -345,6 +335,14 @@ function simulate_ENKF(n_ensemble::Int64)
     (obs_times, obs_values) = read_series("tide_bath.txt")
     observed_data[5, :] = obs_values[:]
 
+    # Define H, the Kalman observation matrix
+
+    H = zeros(Float64, length(ilocs), length(x))
+    
+    for i = 1:length(ilocs)-4
+        
+        H[i, ilocs[i]] = 1.0
+    end
 
     for i = 1:nt
         #println("timestep $(i), $(round(i/nt*100,digits=1)) %")
