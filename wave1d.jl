@@ -229,8 +229,6 @@ function simulate()
     times = s["times"]
     series_data = zeros(Float64, length(ilocs), length(t))
     nt = length(t)
-    wavelengths = []
-    height_idx = 3:2:length(x)-1
     for i = 1:nt
         # println("timestep $(i), $(round(i/nt*100,digits=1)) %")
         x = timestep(x, i, s)
@@ -239,7 +237,6 @@ function simulate()
             #Very instructive, but turn off for production
         end
         series_data[:, i] = x[ilocs]
-        append!(wavelengths, compute_wavelengths(compute_local_max_indices(x[height_idx]), s))
     end
     #load observations
     (obs_times, obs_values) = read_series("tide_cadzand.txt")
@@ -274,9 +271,8 @@ function simulate()
         println("You can plot maps by setting plot_maps to true.")
     end
 
-    println("Wavelength: $(wavelengths)")
-    println("Wave speed: $(compute_wave_propagation_speed(series_data, mean(wavelengths), s))")
-    return wavelengths, series_data
+    println("Wave speed: $(compute_wave_propagation_speed(series_data, s))")
+    # return wavelengths, series_data
 end
 
 function bias_at_locations(data1, data2)
@@ -325,31 +321,17 @@ function compute_local_max_indices(x)
     return indices_local_maxima
 end
 
-function compute_wavelengths(indices::Vector{Int32}, s::Dict)
-    wavelengths = []
-    dx = s["dx"]
-    for i = 2:length(indices)
-        push!(wavelengths, dx * (indices[i] - indices[i-1]))
-    end
-    return wavelengths
-end
-
-function compute_wave_propagation_speed(series_data, wavelength::Float64, s::Dict)
-    indices_local_maxima::Vector{Int32} = []
-    for row in eachrow(series_data[1:5, :])
-        indices_row_max = compute_local_max_indices(row)
-        indices_local_maxima = vcat(indices_local_maxima, indices_row_max)
-    end
+function compute_wave_propagation_speed(series_data, s::Dict)
+    indices_local_maxima_left = compute_local_max_indices(series_data[1, :])
+    indices_local_maxima_right = compute_local_max_indices(series_data[5, :])
+    start_idx = 1
+    indices_after_lhs_max = indices_local_maxima_right[indices_local_maxima_right.>indices_local_maxima_left[start_idx]]
+    L = s["L"]
     dt = s["dt"]
-    wave_speed::Float64 = 0.0
-    period = (indices_local_maxima[2, 1] - indices_local_maxima[1, 1]) * dt
-    wave_speed = wavelength / period
+    wave_speed = L / ((indices_after_lhs_max[1] - indices_local_maxima_left[start_idx]) * dt)
     return wave_speed
 end
 
-function compute_wave_velocity_by_velocity(xlocs_velocity)
-
-end
 
 function build_latex_table_bias_rmse(biases, rmses)
     names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
@@ -360,6 +342,4 @@ function build_latex_table_bias_rmse(biases, rmses)
     end
 end
 
-wavelengths, series_data = simulate()
-
-plot(wavelengths, linecolor=:blue, label=["wavelength"])
+simulate()
