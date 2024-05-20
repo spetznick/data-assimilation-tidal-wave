@@ -27,11 +27,14 @@ using Latexify
 using DataFrames
 
 plot_maps = false #true or false - plotting makes the runs much slower
+build_latex_tables = false #true or false - build latex tables
 
 minutes_to_seconds = 60.0
 hours_to_seconds = 60.0 * 60.0
 days_to_seconds = 24.0 * 60.0 * 60.0
 seconds_to_hours = 1.0 / hours_to_seconds
+
+wavelengths = []
 
 function read_series(filename::String)
     infile = open(filename)
@@ -207,7 +210,7 @@ function simulate()
     xlocs_waterlevel = [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L, 0.99 * L]
     xlocs_velocity = [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L]
     ilocs = vcat(map(x -> round(Int, x), xlocs_waterlevel ./ dx) .* 2 .+ 1, map(x -> round(Int, x), xlocs_velocity ./ dx) .* 2 .+ 2)
-    println(ilocs)
+    # println(ilocs)
     loc_names = String[]
     names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
     for i = 1:length(xlocs_waterlevel)
@@ -226,14 +229,17 @@ function simulate()
     times = s["times"]
     series_data = zeros(Float64, length(ilocs), length(t))
     nt = length(t)
+    wavelengths = []
+    height_idx = 3:2:length(x)-1
     for i = 1:nt
-        println("timestep $(i), $(round(i/nt*100,digits=1)) %")
+        # println("timestep $(i), $(round(i/nt*100,digits=1)) %")
         x = timestep(x, i, s)
         if plot_maps == true
             plot_state(x, i, s) #Show spatial plot.
             #Very instructive, but turn off for production
         end
         series_data[:, i] = x[ilocs]
+        append!(wavelengths, compute_wavelengths(compute_local_max_indices(x[height_idx]), s))
     end
     #load observations
     (obs_times, obs_values) = read_series("tide_cadzand.txt")
@@ -257,15 +263,20 @@ function simulate()
     rmses = zeros(Float64, length(names))
     biases = bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end]) # ignore first data points due to dynamic behaviour in the beginning
     rmses = rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end]) # ignore first data points due to dynamic behaviour in the beginning
-    build_latex_table_bias_rmse(biases, rmses)
-
+    if build_latex_tables
+        build_latex_table_bias_rmse(biases, rmses)
+    end
     println("All figures have been saved to files.")
-    if plot_maps == false
-        println("You can plot maps by setting plot_maps to true.")
-    else
+    if plot_maps
         println("You can plotting of maps off by setting plot_maps to false.")
         println("This will make the computation much faster.")
+    else
+        println("You can plot maps by setting plot_maps to true.")
     end
+
+    println("Wavelength: $(wavelengths)")
+    println("Wave speed: $(compute_wave_propagation_speed(series_data, mean(wavelengths), s))")
+    return wavelengths, series_data
 end
 
 function bias_at_locations(data1, data2)
@@ -302,7 +313,38 @@ function compute_rmse(data1, data2, label)
     return rmse
 end
 
-function compute_wave_velocity_by_height(xlocs_velocity)
+function compute_local_max_indices(x)
+    indices_local_maxima::Vector{Int32} = []
+    previous_value::Float64 = x[1]
+    for i = 2:length(x)-1
+        if x[i] > previous_value && x[i] > x[i+1]
+            push!(indices_local_maxima, i)
+        end
+        previous_value = x[i]
+    end
+    return indices_local_maxima
+end
+
+function compute_wavelengths(indices::Vector{Int32}, s::Dict)
+    wavelengths = []
+    dx = s["dx"]
+    for i = 2:length(indices)
+        push!(wavelengths, dx * (indices[i] - indices[i-1]))
+    end
+    return wavelengths
+end
+
+function compute_wave_propagation_speed(series_data, wavelength::Float64, s::Dict)
+    indices_local_maxima::Vector{Int32} = []
+    for row in eachrow(series_data[1:5, :])
+        indices_row_max = compute_local_max_indices(row)
+        indices_local_maxima = vcat(indices_local_maxima, indices_row_max)
+    end
+    dt = s["dt"]
+    wave_speed::Float64 = 0.0
+    period = (indices_local_maxima[2, 1] - indices_local_maxima[1, 1]) * dt
+    wave_speed = wavelength / period
+    return wave_speed
 end
 
 function compute_wave_velocity_by_velocity(xlocs_velocity)
@@ -318,4 +360,6 @@ function build_latex_table_bias_rmse(biases, rmses)
     end
 end
 
-simulate()
+wavelengths, series_data = simulate()
+
+plot(wavelengths, linecolor=:blue, label=["wavelength"])
