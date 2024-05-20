@@ -169,6 +169,26 @@ function timestep(x, i, settings) #return x one timestep later
     return newx
 end
 
+function timestep_ENKF(x, i, settings) #return x one timestep later
+    A_old = settings["A"]
+    B_old = settings["B"]
+    # For A
+    A = [A_old zeros(size(A_old, 1)); zeros(1, size(A_old, 2)) 1]
+    A_inv = inv(A)
+    
+    # For B
+    B = [B_old zeros(size(B_old, 1)); zeros(1, size(B_old, 2)) 0]
+    B[1, end] = 1
+    u = zeros(Float64, size(B)[1])
+    u[1] = settings["h_left"][i]
+    x = vcat(x, 0)
+    x_new = A_inv * (B * x + u)
+    return x_new
+end
+
+
+
+
 function plot_state(x, i, s)
     println("plotting a map.")
     #plot all waterlevels and velocities at one time
@@ -265,21 +285,6 @@ function simulate()
     end
 end
 
-function Kalman_update(x, y, H, R, P, Q)
-    # Kalman update
-    # x: state vector
-    # y: observation vector
-    # H: observation matrix
-    # R: observation error covariance
-    # P: state error covariance
-    # Q: process noise covariance
-    # return updated state vector and covariance matrix
-    # prediction
-
-    return (x, P)
-    
-end
-
 
 function simulate_ENKF(n_ensemble::Int64)
     # for plots
@@ -315,6 +320,13 @@ function simulate_ENKF(n_ensemble::Int64)
         X[:,n] = x + perturbation
     end
 
+    alpha = exp(-600/3600)
+
+
+
+
+
+
     t = s["t"]
     times = s["times"]
     
@@ -343,7 +355,7 @@ function simulate_ENKF(n_ensemble::Int64)
         
         H[i, ilocs[i]] = 1.0
     end
-
+    println(t[2]-t[1])
     for i = 1:nt
         #println("timestep $(i), $(round(i/nt*100,digits=1)) %")
         for n in range(1, n_ensemble)
