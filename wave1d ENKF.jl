@@ -26,7 +26,7 @@ using Statistics
 using Latexify
 using DataFrames
 
-plot_maps = true #true or false - plotting makes the runs much slower
+plot_maps = false #true or false - plotting makes the runs much slower
 build_latex_tables = true #true or false - build latex tables
 enkf = true #true or false - run ensemble Kalman filter
 
@@ -211,7 +211,7 @@ function plot_state(x, i, s; cov_data, enkf=false)
     #This is a bug and will probably be solved soon.
 end
 
-function plot_series(t, series_data, s, obs_data, cov_data, enkf=false)
+function plot_series(t, series_data, s, obs_data)
     # plot timeseries from model and observations
     loc_names = s["loc_names"]
     nseries = length(loc_names)
@@ -223,7 +223,7 @@ function plot_series(t, series_data, s, obs_data, cov_data, enkf=false)
     for i = 1:nseries
         #fig=PyPlot.figure(i+1)
         # Variances are so small that they are not visible in the plot for subsequent plots
-        p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, label=["model"], ribbon=cov_data[i, :], fillalpha=0.2, fillcolor=:blue)
+        p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, label=["model"])
         ntimes = min(length(t), size(obs_data, 2))
         plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label=["model", "measured"])
         title!(p, loc_names[i])
@@ -231,6 +231,16 @@ function plot_series(t, series_data, s, obs_data, cov_data, enkf=false)
         savefig(p, replace("figures/$(loc_names[i])$(enkf_suffix).png", " " => "_"))
         sleep(0.05) #Slow down to avoid that that the plotting backend starts complaining. This is a bug and should be fixed soon.
     end
+end
+
+function plot_state_for_gif(x, cov_data, s)
+    #plot all waterlevels and velocities at one time
+    xh = 0.001 * s["x_h"]
+    p1 = plot(xh, x[1:2:end-1], ylabel="h", ylims=(-3.0, 5.0), legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
+    xu = 0.001 * s["x_u"]
+    p2 = plot(xu, x[2:2:end], ylabel="u", ylims=(-2.0, 3.0), xlabel="x [km]", legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
+    p = plot(p1, p2, layout=(2, 1))
+    return p
 end
 
 
@@ -286,7 +296,8 @@ function simulate_ENKF(n_ensemble::Int64, enkf::Bool)
 
     t = s["t"]
     series_data = zeros(Float64, length(ilocs), length(t))
-    cov_data = zeros(Float64, length(ilocs), length(t))
+    full_state_data = zeros(Float64, length(x), length(t))
+    cov_data = zeros(Float64, length(x), length(t))
     nt = length(t)
     observed_data = load_observations(s)
     for i = 1:nt
@@ -297,11 +308,12 @@ function simulate_ENKF(n_ensemble::Int64, enkf::Bool)
             #Very instructive, but turn off for production
         end
         series_data[:, i] = x[ilocs]
-        cov_data[:, i] = diag(P[ilocs, ilocs])
+        full_state_data[:, i] = x
+        cov_data[:, i] = diag(P[1:end-1, 1:end-1])
     end
 
     #plot timeseries
-    plot_series(t, series_data, s, observed_data, cov_data, enkf)
+    plot_series(t, series_data, s, observed_data)
 
     # compute Statistics
     index_start = 62 # start at second rising tide
@@ -320,6 +332,7 @@ function simulate_ENKF(n_ensemble::Int64, enkf::Bool)
         println("You can plotting of maps off by setting plot_maps to false.")
         println("This will make the computation much faster.")
     end
+    return full_state_data, cov_data, s
 end
 
 function load_observations(settings)
@@ -412,4 +425,10 @@ function build_latex_table_bias_rmse(biases, rmses, ENKF)
     end
 end
 
-simulate_ENKF(50, enkf)
+full_state_data, cov_data, s = simulate_ENKF(50, enkf)
+anim = @animate for i ∈ 1:length(s["t"])
+    plot_state_for_gif(full_state_data[:, i], cov_data, s)
+end
+
+
+gif(anim, "figures/fig_map_enkf.gif", fps=10)
