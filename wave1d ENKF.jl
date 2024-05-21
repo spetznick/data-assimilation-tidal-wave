@@ -25,7 +25,7 @@ using LinearAlgebra
 using Statistics
 using Latexify
 
-plot_maps = false #true or false - plotting makes the runs much slower
+plot_maps = true #true or false - plotting makes the runs much slower
 
 minutes_to_seconds = 60.0
 hours_to_seconds = 60.0 * 60.0
@@ -169,13 +169,11 @@ function timestep(x, i, settings) #return x one timestep later
     return newx
 end
 
-function timestep_ENKF(x, A_inv, B, u, i, settings, alpha) #return x one timestep later
+function timestep_ENKF(x, A_inv, B, u, i, settings) #return x one timestep later
     e = zeros(Float64, size(x)[1])
     e[1] = 1
     w = repeat(e, 1, size(x)[2])
-    for i = 1:size(x)[2]
-        
-    end
+
     u[1] = settings["h_left"][i]
     U = A_inv * u
     M = A_inv * B
@@ -309,10 +307,7 @@ function simulate_ENKF(n_ensemble::Int64)
 
     X = zeros(Float64, length(x), n_ensemble)
     for n in n_ensemble
-        e = zeros(Float64, length(x))
-        e[1] = 1
-        perturbation = e .* randn(1)
-        X[:,n] = x + perturbation
+        X[:,n] = x
     end
 
     alpha = exp(-600/3600) # exp(-dt/T) dt = 10 minutes, T = 6 hours
@@ -342,6 +337,8 @@ function simulate_ENKF(n_ensemble::Int64)
     end
 
     observed_data = load_observations()
+    observed_data = observed_data[1:5, :]
+    #println(size(observed_data))
     
     A_old = s["A"]
     B_old = s["B"]
@@ -349,37 +346,34 @@ function simulate_ENKF(n_ensemble::Int64)
     A_inv = inv(A)
     
     B = [B_old zeros(size(B_old, 1)); zeros(1, size(B_old, 2)) 0]
-    B[1, end] = 1
-    B[end, end] = alpha
+    B[1, end] = 1; B[end, end] = alpha
+
     u = zeros(Float64, size(B)[1])
     X = vcat(X, zeros(1, size(X, 2)))
 
-    H = zeros(Float64, length(ilocs), length(x)+1)
+    H = zeros(Float64, length(ilocs)-4, length(x)+1)
     for i = 1:length(ilocs)-4
         H[i, ilocs[i]] = 1.0
     end
     for i = 1:nt
         #Time update
-        X = timestep_ENKF(X, A_inv, B, u, i, s, alpha)
+        X = timestep_ENKF(X, A_inv, B, u, i, s)
         # Compute the ensemble mean
         x = mean(X, dims=2)
 
-        x = x[1:end-1, :]
-        # Compute the ensemble covariance
+        
+
         P = cov(X, dims=2)
-        
-        # Measurement update
-        K_K = P * H' * inv(H * P * H')
-        
-        X = X + K_K * (observed_data[:, i] - H * X)
 
-        
-        """        for n in range(1, n_ensemble)
-            X[:,n] = timestep_ENKF(X[:,n], i, s, alpha)
-
-
-
-        end"""
+        if issuccess(cholesky(H * P * H'; check = false))
+            K_K = P * H' * inv(H * P * H')
+        else
+            K_K = P * H' * inv(H * P * H' + 0.1 * I)
+        end
+        #println(size(X), size(K_K), size(observed_data[:, i]), size(H*X))       
+        X = X + K_K * (observed_data[:, i] .- H * X)
+        x = mean(X, dims=2)
+        x = x[1:end-1, :]
         if plot_maps == true
             plot_state(x, i, s) #Show spatial plot.
             #Very instructive, but turn off for production
