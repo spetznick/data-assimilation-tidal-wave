@@ -169,7 +169,7 @@ function timestep(x, i, settings) #return x one timestep later
     return newx
 end
 
-function timestep_ENKF(X, A_inv, B, u, i, settings) #return x one timestep later
+function ENKF_update(X, A_inv, B, u, H, observations, i, settings)
     e = zeros(Float64, size(X)[1])
     e[1] = 1
     w = repeat(e, 1, size(X)[2])
@@ -183,6 +183,12 @@ function timestep_ENKF(X, A_inv, B, u, i, settings) #return x one timestep later
     end
     W = A_inv * w
     x_new = M * X + U + W
+
+    P = cov(x_new, dims=2)
+
+    K_K = (P * H') * inv(H * P * H' + 0.1 * I)
+
+    x_new = x_new + K_K * (observations .- H * x_new) # does this work column wise?
     return x_new
 end
 
@@ -300,8 +306,7 @@ function load_observations(settings)
     return observed_data[1:5, :]
 end
 
-
-function simulate_ENKF(n_ensemble::Int64)
+function simulate_ENKF(n_ensemble::Int64, ENKF::Bool)
     # for plots
     # locations of observations
     println("Running ensemble simulation with $(n_ensemble) members.")
@@ -362,23 +367,9 @@ function simulate_ENKF(n_ensemble::Int64)
         H[i, ilocs[i]] = 1.0
     end
     for i = 1:nt
-        #Time update
-        X = timestep_ENKF(X, A_inv, B, u, i, s)
-        # Compute the ensemble mean
-        x = mean(X, dims=2)
-        P = cov(X, dims=2)
 
-        #println(size(P * H'), size(H * P * H'))
-
-        if issuccess(cholesky(H * P * H'; check=false))
-            K_K = (P * H') * inv(H * P * H')
-        else
-            K_K = (P * H') * inv(H * P * H' + 0.1 * I)
-        end
-        #println(size(X), size(K_K), size(observed_data[:, i]), size(H*X))
-        X = X + K_K * (observed_data[:, i] .- H * X) # does this work column wise?
-        x = mean(X, dims=2)
-        x = x[1:end-1, :]
+        X = ENKF_update(X, A_inv, B, u, H, observed_data[:, i], i, s)
+        x = mean(X[1:end-1, :], dims=2)
         if plot_maps == true
             plot_state(x, i, s) #Show spatial plot.
             #Very instructive, but turn off for production
@@ -433,5 +424,4 @@ function compute_rmse(data1, data2, label)
     return rmse
 end
 
-
-simulate_ENKF(50)
+simulate_ENKF(50, ENKF == true)
