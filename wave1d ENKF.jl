@@ -169,7 +169,7 @@ function timestep(x, i, settings) #return x one timestep later
     return newx
 end
 
-function ENKF_update(X, A_inv, B, u, H, observations, i, settings)
+function update_ENKF(X, A_inv, B, u, H, observations, i, settings)
     e = zeros(Float64, size(X)[1])
     e[1] = 1
     w = repeat(e, 1, size(X)[2])
@@ -368,7 +368,7 @@ function simulate_ENKF(n_ensemble::Int64, ENKF::Bool)
     end
     for i = 1:nt
 
-        X = ENKF_update(X, A_inv, B, u, H, observed_data[:, i], i, s)
+        X = update_ENKF(X, A_inv, B, u, H, observed_data[:, i], i, s)
         x = mean(X[1:end-1, :], dims=2)
         if plot_maps == true
             plot_state(x, i, s) #Show spatial plot.
@@ -424,4 +424,4 @@ function compute_rmse(data1, data2, label)
     return rmse
 end
 
-simulate_ENKF(50, ENKF == true)
+simulate_ENKF(50, true)
