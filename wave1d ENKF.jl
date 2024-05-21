@@ -364,14 +364,8 @@ function simulate_ENKF(n_ensemble::Int64)
         x = mean(X, dims=2)
         P = cov(X, dims=2)
 
-        #println(size(P * H'), size(H * P * H'))
-
-        if issuccess(cholesky(H * P * H'; check=false))
-            K_K = (P * H') *  inv(H * P * H')
-        else
-            K_K = (P * H') *  inv(H * P * H' + 0.1 * I)
-        end
-        #println(size(X), size(K_K), size(observed_data[:, i]), size(H*X))
+        K_K = (P * H') *  inv(H * P * H' + 0.1 * I)
+        
         X = X + K_K * (observed_data[:, i] .- H * X) # does this work column wise?
         x = mean(X, dims=2)
         x = x[1:end-1, :]
