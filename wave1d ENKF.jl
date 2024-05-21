@@ -178,7 +178,10 @@ function timestep_ENKF(X, A_inv, B, u, i, settings) #return x one timestep later
     U = A_inv * u
     U = repeat(U, 1, size(X)[2])
     M = A_inv * B
-    W = A_inv * (w * randn(size(X)[2]))
+    for j in 1:size(w)[2]
+        w[1,j] = randn()
+    end
+    W = A_inv * w
     x_new = M * X + U + W
     return x_new
 end
@@ -348,7 +351,7 @@ function simulate_ENKF(n_ensemble::Int64)
     B[end, end] = alpha
 
     u = zeros(Float64, size(B)[1])
-    X = vcat(X, zeros(1, size(X, 2)))
+   
 
     H = zeros(Float64, length(ilocs) - 4, length(x) + 1)
     for i = 1:length(ilocs)-4
@@ -361,10 +364,12 @@ function simulate_ENKF(n_ensemble::Int64)
         x = mean(X, dims=2)
         P = cov(X, dims=2)
 
+        #println(size(P * H'), size(H * P * H'))
+
         if issuccess(cholesky(H * P * H'; check=false))
-            K_K = (P * H') \ (H * P * H')
+            K_K = (P * H') *  inv(H * P * H')
         else
-            K_K = (P * H') \ (H * P * H' + 0.1 * I)
+            K_K = (P * H') *  inv(H * P * H' + 0.1 * I)
         end
         #println(size(X), size(K_K), size(observed_data[:, i]), size(H*X))
         X = X + K_K * (observed_data[:, i] .- H * X) # does this work column wise?
