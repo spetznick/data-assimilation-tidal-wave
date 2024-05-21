@@ -179,7 +179,7 @@ function timestep_ENKF(X, A_inv, B, u, i, settings) #return x one timestep later
     U = repeat(U, 1, size(X)[2])
     M = A_inv * B
     for j in 1:size(w)[2]
-        w[1,j] = randn()
+        w[1, j] = randn()
     end
     W = A_inv * w
     x_new = M * X + U + W
@@ -187,7 +187,7 @@ function timestep_ENKF(X, A_inv, B, u, i, settings) #return x one timestep later
 end
 
 function plot_state(x, i, s)
-    println("plotting a map.")
+    # println("plotting a map.")
     #plot all waterlevels and velocities at one time
     xh = 0.001 * s["x_h"]
     p1 = plot(xh, x[1:2:end], ylabel="h", ylims=(-3.0, 5.0), legend=false)
@@ -343,15 +343,19 @@ function simulate_ENKF(n_ensemble::Int64)
 
     A_old = s["A"]
     B_old = s["B"]
-    A = [A_old zeros(size(A_old, 1)); zeros(1, size(A_old, 2)) 1]
+    A_ = cat(A_old, zeros(size(A_old, 1)), dims=2)
+    A_end = cat(zeros(1, size(A_old, 2)), 1, dims=2)
+    A = cat(A_, A_end, dims=1)
     A_inv = inv(A)
 
-    B = [B_old zeros(size(B_old, 1)); zeros(1, size(B_old, 2)) 0]
+    B_ = cat(B_old, zeros(size(B_old, 1)), dims=2)
+    B_end = cat(zeros(1, size(B_old, 2)), 1, dims=2)
+    B = cat(B_, B_end, dims=1)
     B[1, end] = 1
     B[end, end] = alpha
 
     u = zeros(Float64, size(B)[1])
-   
+
 
     H = zeros(Float64, length(ilocs) - 4, length(x) + 1)
     for i = 1:length(ilocs)-4
@@ -367,9 +371,9 @@ function simulate_ENKF(n_ensemble::Int64)
         #println(size(P * H'), size(H * P * H'))
 
         if issuccess(cholesky(H * P * H'; check=false))
-            K_K = (P * H') *  inv(H * P * H')
+            K_K = (P * H') * inv(H * P * H')
         else
-            K_K = (P * H') *  inv(H * P * H' + 0.1 * I)
+            K_K = (P * H') * inv(H * P * H' + 0.1 * I)
         end
         #println(size(X), size(K_K), size(observed_data[:, i]), size(H*X))
         X = X + K_K * (observed_data[:, i] .- H * X) # does this work column wise?
