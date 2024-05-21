@@ -24,8 +24,11 @@ using Dates
 using LinearAlgebra
 using Statistics
 using Latexify
+using DataFrames
 
 plot_maps = true #true or false - plotting makes the runs much slower
+build_latex_tables = true #true or false - build latex tables
+enkf = true #true or false - run ensemble Kalman filter
 
 minutes_to_seconds = 60.0
 hours_to_seconds = 60.0 * 60.0
@@ -178,137 +181,60 @@ function update_ENKF(X, A_inv, B, u, H, observations, i, settings)
     U = A_inv * u
     U = repeat(U, 1, size(X)[2])
     M = A_inv * B
-    for j in 1:size(w)[2]
-        w[1, j] = randn()
-    end
+    w[1, :] = (1 - exp(-600 / 3600)^2) * 0.02 * randn(size(w)[2])
     W = A_inv * w
     x_new = M * X + U + W
 
     P = cov(x_new, dims=2)
-
-    K_K = (P * H') * inv(H * P * H' + 0.1 * I)
-
+    r = 0.02
+    K_K = (P * H') * inv(H * P * H' + r * I)
+    # print("K_K: $(K_K), ")
     x_new = x_new + K_K * (observations .- H * x_new) # does this work column wise?
-    return x_new
+    return x_new, P
 end
 
-function plot_state(x, i, s)
+function plot_state(x, i, s; cov_data, enkf=false)
     # println("plotting a map.")
+    if enkf
+        enkf_suffix = "_ENKF"
+    else
+        enkf_suffix = ""
+    end
     #plot all waterlevels and velocities at one time
     xh = 0.001 * s["x_h"]
-    p1 = plot(xh, x[1:2:end], ylabel="h", ylims=(-3.0, 5.0), legend=false)
+    p1 = plot(xh, x[1:2:end], ylabel="h", ylims=(-3.0, 5.0), legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
     xu = 0.001 * s["x_u"]
-    p2 = plot(xu, x[2:2:end], ylabel="u", ylims=(-2.0, 3.0), xlabel="x [km]", legend=false)
+    p2 = plot(xu, x[2:2:end], ylabel="u", ylims=(-2.0, 3.0), xlabel="x [km]", legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
     p = plot(p1, p2, layout=(2, 1))
-    savefig(p, "figures/fig_map_$(string(i,pad=3)).png")
+    savefig(p, "figures/fig_map$(enkf_suffix)_$(string(i,pad=3)).png")
     sleep(0.05) #slow down a bit or the plotting backend starts complaining.
     #This is a bug and will probably be solved soon.
 end
 
-function plot_series(t, series_data, s, obs_data)
+function plot_series(t, series_data, s, obs_data, cov_data, enkf=false)
     # plot timeseries from model and observations
     loc_names = s["loc_names"]
     nseries = length(loc_names)
+    if enkf
+        enkf_suffix = "_ENKF"
+    else
+        enkf_suffix = ""
+    end
     for i = 1:nseries
         #fig=PyPlot.figure(i+1)
-        p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, label=["model"])
+        # Variances are so small that they are not visible in the plot for subsequent plots
+        p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, label=["model"], ribbon=cov_data[i, :], fillalpha=0.2, fillcolor=:blue)
         ntimes = min(length(t), size(obs_data, 2))
         plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label=["model", "measured"])
         title!(p, loc_names[i])
         xlabel!(p, "time [hours]")
-        savefig(p, replace("figures/$(loc_names[i]).png", " " => "_"))
+        savefig(p, replace("figures/$(loc_names[i])$(enkf_suffix).png", " " => "_"))
         sleep(0.05) #Slow down to avoid that that the plotting backend starts complaining. This is a bug and should be fixed soon.
     end
 end
 
-function simulate()
-    # for plots
-    # locations of observations
-    s = settings()
-    L = s["L"]
-    dx = s["dx"]
-    xlocs_tide = [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L, 0.99 * L]
-    xlocs_waterlevel = [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L]
-    ilocs = vcat(map(x -> round(Int, x), xlocs_tide ./ dx) .* 2 .+ 1, map(x -> round(Int, x), xlocs_waterlevel ./ dx) .* 2 .+ 2)
-    #println(ilocs)
-    loc_names = String[]
-    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
-    for i = 1:length(xlocs_tide)
-        push!(loc_names, "Waterlevel at x=$(0.001*xlocs_tide[i]) km $(names[i])")
-    end
-    for i = 1:length(xlocs_waterlevel)
-        push!(loc_names, "Velocity at x=$(0.001*xlocs_waterlevel[i]) km $(names[i])")
-    end
-    s["xlocs_tide"] = xlocs_tide
-    s["xlocs_waterlevel"] = xlocs_waterlevel
-    s["ilocs"] = ilocs
-    s["loc_names"] = loc_names
 
-    (x, t0) = initialize(s)
-    t = s["t"]
-    times = s["times"]
-    series_data = zeros(Float64, length(ilocs), length(t))
-    nt = length(t)
-    for i = 1:nt
-        #println("timestep $(i), $(round(i/nt*100,digits=1)) %")
-        x = timestep(x, i, s)
-        if plot_maps == true
-            plot_state(x, i, s) #Show spatial plot.
-            #Very instructive, but turn off for production
-        end
-        series_data[:, i] = x[ilocs]
-    end
-    #load observations
-    (obs_times, obs_values) = read_series("tide_cadzand.txt")
-    observed_data = zeros(Float64, length(ilocs), length(obs_times))
-    observed_data[1, :] = obs_values[:]
-    (obs_times, obs_values) = read_series("tide_vlissingen.txt")
-    observed_data[2, :] = obs_values[:]
-    (obs_times, obs_values) = read_series("tide_terneuzen.txt")
-    observed_data[3, :] = obs_values[:]
-    (obs_times, obs_values) = read_series("tide_hansweert.txt")
-    observed_data[4, :] = obs_values[:]
-    (obs_times, obs_values) = read_series("tide_bath.txt")
-    observed_data[5, :] = obs_values[:]
-
-    #plot timeseries
-    plot_series(t, series_data, s, observed_data)
-
-    # compute Statistics
-    index_start = 62 # start at second rising tide
-    bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], s) # ignore first data points due to dynamic behaviour in the beginning
-    rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], s) # ignore first data points due to dynamic behaviour in the beginning
-
-    println("All figures have been saved to files.")
-    if plot_maps == False
-        println("You can plot maps by setting plot_maps to true.")
-    else
-        println("You can plotting of maps off by setting plot_maps to false.")
-        println("This will make the computation much faster.")
-    end
-end
-
-function load_observations(settings)
-    ilocs = settings["ilocs"]
-    #load observations
-    (obs_times, obs_values) = read_series("tide_cadzand.txt")
-    observed_data = zeros(Float64, length(ilocs), length(obs_times))
-    observed_data[1, :] = obs_values[:]
-    (obs_times, obs_values) = read_series("tide_vlissingen.txt")
-    observed_data[2, :] = obs_values[:]
-    (obs_times, obs_values) = read_series("tide_terneuzen.txt")
-    observed_data[3, :] = obs_values[:]
-    (obs_times, obs_values) = read_series("tide_hansweert.txt")
-    observed_data[4, :] = obs_values[:]
-    (obs_times, obs_values) = read_series("tide_bath.txt")
-    observed_data[5, :] = obs_values[:]
-
-    return observed_data[1:5, :]
-end
-
-function simulate_ENKF(n_ensemble::Int64, ENKF::Bool)
-    # for plots
-    # locations of observations
+function simulate_ENKF(n_ensemble::Int64, enkf::Bool)
     println("Running ensemble simulation with $(n_ensemble) members.")
     s = settings()
     L = s["L"]
@@ -339,13 +265,6 @@ function simulate_ENKF(n_ensemble::Int64, ENKF::Bool)
     end
 
     alpha = exp(-600 / 3600) # exp(-dt/T) dt = 10 minutes, T = 6 hours
-
-    t = s["t"]
-    series_data = zeros(Float64, length(ilocs), length(t))
-    nt = length(t)
-
-    observed_data = load_observations(s)
-
     A_old = s["A"]
     B_old = s["B"]
     A_ = cat(A_old, zeros(size(A_old, 1)), dims=2)
@@ -360,30 +279,39 @@ function simulate_ENKF(n_ensemble::Int64, ENKF::Bool)
     B[end, end] = alpha
 
     u = zeros(Float64, size(B)[1])
-
-
     H = zeros(Float64, length(ilocs) - 4, length(x) + 1)
     for i = 1:length(ilocs)-4
         H[i, ilocs[i]] = 1.0
     end
-    for i = 1:nt
 
-        X = update_ENKF(X, A_inv, B, u, H, observed_data[:, i], i, s)
+    t = s["t"]
+    series_data = zeros(Float64, length(ilocs), length(t))
+    cov_data = zeros(Float64, length(ilocs), length(t))
+    nt = length(t)
+    observed_data = load_observations(s)
+    for i = 1:nt
+        X, P = update_ENKF(X, A_inv, B, u, H, observed_data[1:5, i+1], i, s)
         x = mean(X[1:end-1, :], dims=2)
         if plot_maps == true
-            plot_state(x, i, s) #Show spatial plot.
+            plot_state(x, i, s; cov_data=diag(P[1:end-1, 1:end-1]), enkf=enkf) #Show spatial plot.
             #Very instructive, but turn off for production
         end
         series_data[:, i] = x[ilocs]
+        cov_data[:, i] = diag(P[ilocs, ilocs])
     end
 
     #plot timeseries
-    plot_series(t, series_data, s, observed_data)
+    plot_series(t, series_data, s, observed_data, cov_data, enkf)
 
     # compute Statistics
     index_start = 62 # start at second rising tide
-    bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], s) # ignore first data points due to dynamic behaviour in the beginning
-    rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], s) # ignore first data points due to dynamic behaviour in the beginning
+    biases = zeros(Float64, length(names))
+    rmses = zeros(Float64, length(names))
+    biases = bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end]) # ignore first data points due to dynamic behaviour in the beginning
+    rmses = rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end]) # ignore first data points due to dynamic behaviour in the beginning
+    if build_latex_tables
+        build_latex_table_bias_rmse(biases, rmses, enkf)
+    end
 
     println("All figures have been saved to files.")
     if plot_maps == false
@@ -394,34 +322,94 @@ function simulate_ENKF(n_ensemble::Int64, ENKF::Bool)
     end
 end
 
-function bias_at_locations(data1, data2, s)
-    loc_names = s["loc_names"]
-    nseries = length(loc_names)
-    for i = 1:nseries
-        compute_bias(data1[i, :], data2[i, :], loc_names[i])
-    end
+function load_observations(settings)
+    ilocs = settings["ilocs"]
+    #load observations
+    (obs_times, obs_values) = read_series("tide_cadzand.txt")
+    observed_data = zeros(Float64, length(ilocs), length(obs_times))
+    observed_data[1, :] = obs_values[:]
+    (obs_times, obs_values) = read_series("tide_vlissingen.txt")
+    observed_data[2, :] = obs_values[:]
+    (obs_times, obs_values) = read_series("tide_terneuzen.txt")
+    observed_data[3, :] = obs_values[:]
+    (obs_times, obs_values) = read_series("tide_hansweert.txt")
+    observed_data[4, :] = obs_values[:]
+    (obs_times, obs_values) = read_series("tide_bath.txt")
+    observed_data[5, :] = obs_values[:]
+
+    return observed_data
 end
 
-function rmse_at_locations(data1, data2, s)
-    loc_names = s["loc_names"]
-    nseries = length(loc_names)
+function bias_at_locations(data1, data2)
+    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    biases = zeros(Float64, length(names))
+    nseries = length(names)
     for i = 1:nseries
-        compute_rmse(data1[i, :], data2[i, :], loc_names[i])
+        biases[i] = compute_bias(data1[i, :], data2[i, :], names[i])
     end
+    return biases
+end
+
+function rmse_at_locations(data1, data2)
+    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    nseries = length(names)
+    rmses = zeros(Float64, length(names))
+    for i = 1:nseries
+        rmses[i] = compute_rmse(data1[i, :], data2[i, :], names[i])
+    end
+    return rmses
 end
 
 function compute_bias(data1, data2, label)
     residual = data1 - data2[2:end, :]
     bias = Statistics.std(residual)
-    #println("Bias at $(label): $(bias)")
+    # println("Bias at $(label): $(bias)")
     return bias
 end
 
 function compute_rmse(data1, data2, label)
     residual = data1 - data2[2:end, :]
     rmse = 1 / length(residual) * sqrt(sum(residual .^ 2))
-    #println("RMSE at $(label): $(rmse)")
+    # println("RMSE at $(label): $(rmse)")
     return rmse
 end
 
-simulate_ENKF(50, true)
+function compute_local_max_indices(x)
+    indices_local_maxima::Vector{Int32} = []
+    previous_value::Float64 = x[1]
+    for i = 2:length(x)-1
+        if x[i] > previous_value && x[i] > x[i+1]
+            push!(indices_local_maxima, i)
+        end
+        previous_value = x[i]
+    end
+    return indices_local_maxima
+end
+
+function compute_wave_propagation_speed(series_data, s::Dict)
+    indices_local_maxima_left = compute_local_max_indices(series_data[1, :])
+    indices_local_maxima_right = compute_local_max_indices(series_data[5, :])
+    start_idx = 1
+    indices_after_lhs_max = indices_local_maxima_right[indices_local_maxima_right.>indices_local_maxima_left[start_idx]]
+    L = s["L"]
+    dt = s["dt"]
+    wave_speed = L / ((indices_after_lhs_max[1] - indices_local_maxima_left[start_idx]) * dt)
+    return wave_speed
+end
+
+
+function build_latex_table_bias_rmse(biases, rmses, ENKF)
+    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    df = DataFrame(Locations=names, biases=biases, rmses=rmses)
+    table = latexify(df, env=:table)
+    if ENKF
+        enkf_suffix = "_ENKF"
+    else
+        enkf_suffix = ""
+    end
+    open("tables/q3_bias_rmse_table$(enkf_suffix).txt", "w") do io
+        println(io, table)
+    end
+end
+
+simulate_ENKF(50, enkf)

@@ -326,7 +326,8 @@ function compute_wave_propagation_speed(series_data, s::Dict)
     indices_local_maxima_right = compute_local_max_indices(series_data[5, :])
     start_idx = 1
     indices_after_lhs_max = indices_local_maxima_right[indices_local_maxima_right.>indices_local_maxima_left[start_idx]]
-    L = s["L"]
+    xlocs_waterlevel = s["xlocs_waterlevel"]
+    L = xlocs_waterlevel[end] - xlocs_waterlevel[1]
     dt = s["dt"]
     wave_speed = L / ((indices_after_lhs_max[1] - indices_local_maxima_left[start_idx]) * dt)
     return wave_speed
