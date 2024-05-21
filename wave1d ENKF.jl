@@ -162,31 +162,21 @@ function initialize(s) #return (x,t) at initial time
     return (x, t[1])
 end
 
-function timestep(x, i, settings) #return x one timestep later
-    # take one timestep
-    A = settings["A"]
-    B = settings["B"]
-    rhs = B * x
-    rhs[1] = settings["h_left"][i] #left boundary
-    newx = A \ rhs
-    return newx
-end
 
-function update_ENKF(X, A_inv, B, u, H, observations, i, settings)
+function update_ENKF(X, A_inv, B, u, H, observations)
     e = zeros(Float64, size(X)[1])
     e[1] = 1
     w = repeat(e, 1, size(X)[2])
 
-    u[1] = settings["h_left"][i]
     U = A_inv * u
     U = repeat(U, 1, size(X)[2])
     M = A_inv * B
-    w[1, :] = (1 - exp(-600 / 3600)^2) * 0.02 * randn(size(w)[2])
+    w[1, :] = (1 - exp(-600 / 3600)^2) * 1 * randn(size(w)[2]) # 1.0 should be 0.02
     W = A_inv * w
     x_new = M * X + U + W
 
     P = cov(x_new, dims=2)
-    r = 0.02
+    r = 0.1
     K_K = (P * H') * inv(H * P * H' + r * I)
     # print("K_K: $(K_K), ")
     x_new = x_new + K_K * (observations .- H * x_new) # does this work column wise?
@@ -236,9 +226,13 @@ end
 function plot_state_for_gif(x, cov_data, s)
     #plot all waterlevels and velocities at one time
     xh = 0.001 * s["x_h"]
-    p1 = plot(xh, x[1:2:end-1], ylabel="h", ylims=(-3.0, 5.0), legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
     xu = 0.001 * s["x_u"]
-    p2 = plot(xu, x[2:2:end], ylabel="u", ylims=(-2.0, 3.0), xlabel="x [km]", legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
+    p1 = plot()
+    p2 = plot()
+    for i in 1:size(x, 2)
+        p1 = plot!(p1, xh, x[1:2:end-1, i], ylabel="h", ylims=(-3.0, 5.0), legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
+        p2 = plot!(p2, xu, x[2:2:end, i], ylabel="u", ylims=(-2.0, 3.0), xlabel="x [km]", legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
+    end
     p = plot(p1, p2, layout=(2, 1))
     return p
 end
@@ -296,19 +290,20 @@ function simulate_ENKF(n_ensemble::Int64, enkf::Bool)
 
     t = s["t"]
     series_data = zeros(Float64, length(ilocs), length(t))
-    full_state_data = zeros(Float64, length(x), length(t))
+    full_state_data = zeros(Float64, length(x), n_ensemble, length(t))
     cov_data = zeros(Float64, length(x), length(t))
     nt = length(t)
     observed_data = load_observations(s)
     for i = 1:nt
-        X, P = update_ENKF(X, A_inv, B, u, H, observed_data[1:5, i+1], i, s)
+        u[1] = s["h_left"][i]
+        X, P = update_ENKF(X, A_inv, B, u, H, observed_data[1:5, i+1])
         x = mean(X[1:end-1, :], dims=2)
-        if plot_maps == true
+        if plot_maps
             plot_state(x, i, s; cov_data=diag(P[1:end-1, 1:end-1]), enkf=enkf) #Show spatial plot.
             #Very instructive, but turn off for production
         end
         series_data[:, i] = x[ilocs]
-        full_state_data[:, i] = x
+        full_state_data[:, :, i] = X[1:end-1, :]
         cov_data[:, i] = diag(P[1:end-1, 1:end-1])
     end
 
@@ -326,7 +321,7 @@ function simulate_ENKF(n_ensemble::Int64, enkf::Bool)
     end
 
     println("All figures have been saved to files.")
-    if plot_maps == false
+    if ~plot_maps
         println("You can plot maps by setting plot_maps to true.")
     else
         println("You can plotting of maps off by setting plot_maps to false.")
@@ -425,10 +420,9 @@ function build_latex_table_bias_rmse(biases, rmses, ENKF)
     end
 end
 
-full_state_data, cov_data, s = simulate_ENKF(50, enkf)
+full_state_data, cov_data, s = simulate_ENKF(5, enkf)
 anim = @animate for i ∈ 1:length(s["t"])
-    plot_state_for_gif(full_state_data[:, i], cov_data, s)
+    plot_state_for_gif(full_state_data[:, :, i], cov_data, s)
 end
-
 
 gif(anim, "figures/fig_map_enkf.gif", fps=10)
