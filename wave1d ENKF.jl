@@ -169,15 +169,17 @@ function timestep(x, i, settings) #return x one timestep later
     return newx
 end
 
-function timestep_ENKF(x, A_inv, B, u, i, settings) #return x one timestep later
-    e = zeros(Float64, size(x)[1])
+function timestep_ENKF(X, A_inv, B, u, i, settings) #return x one timestep later
+    e = zeros(Float64, size(X)[1])
     e[1] = 1
-    w = repeat(e, 1, size(x)[2])
+    w = repeat(e, 1, size(X)[2])
 
     u[1] = settings["h_left"][i]
     U = A_inv * u
+    U = repeat(U, 1, size(X)[2])
     M = A_inv * B
-    x_new = M * x .+ U .+ w * randn(size(x)[2])
+    W = A_inv * (w * randn(size(X)[2]))
+    x_new = M * X + U + W
     return x_new
 end
 
@@ -216,8 +218,8 @@ function simulate()
     s = settings()
     L = s["L"]
     dx = s["dx"]
-    xlocs_tide =  [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L, 0.99 * L]
-    xlocs_waterlevel =    [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L]
+    xlocs_tide = [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L, 0.99 * L]
+    xlocs_waterlevel = [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L]
     ilocs = vcat(map(x -> round(Int, x), xlocs_tide ./ dx) .* 2 .+ 1, map(x -> round(Int, x), xlocs_waterlevel ./ dx) .* 2 .+ 2)
     #println(ilocs)
     loc_names = String[]
@@ -229,9 +231,9 @@ function simulate()
         push!(loc_names, "Velocity at x=$(0.001*xlocs_waterlevel[i]) km $(names[i])")
     end
     s["xlocs_tide"] = xlocs_tide
-    s["xlocs_waterlevel"] =   xlocs_waterlevel
-    s["ilocs"] =            ilocs
-    s["loc_names"] =        loc_names
+    s["xlocs_waterlevel"] = xlocs_waterlevel
+    s["ilocs"] = ilocs
+    s["loc_names"] = loc_names
 
     (x, t0) = initialize(s)
     t = s["t"]
@@ -277,6 +279,24 @@ function simulate()
     end
 end
 
+function load_observations(settings)
+    ilocs = settings["ilocs"]
+    #load observations
+    (obs_times, obs_values) = read_series("tide_cadzand.txt")
+    observed_data = zeros(Float64, length(ilocs), length(obs_times))
+    observed_data[1, :] = obs_values[:]
+    (obs_times, obs_values) = read_series("tide_vlissingen.txt")
+    observed_data[2, :] = obs_values[:]
+    (obs_times, obs_values) = read_series("tide_terneuzen.txt")
+    observed_data[3, :] = obs_values[:]
+    (obs_times, obs_values) = read_series("tide_hansweert.txt")
+    observed_data[4, :] = obs_values[:]
+    (obs_times, obs_values) = read_series("tide_bath.txt")
+    observed_data[5, :] = obs_values[:]
+
+    return observed_data[1:5, :]
+end
+
 
 function simulate_ENKF(n_ensemble::Int64)
     # for plots
@@ -303,55 +323,34 @@ function simulate_ENKF(n_ensemble::Int64)
     s["ilocs"] = ilocs
     s["loc_names"] = loc_names
 
-    (x, t0) = initialize(s)   
+    (x, t0) = initialize(s)
 
-    X = zeros(Float64, length(x), n_ensemble)
+    X = zeros(Float64, length(x) + 1, n_ensemble)
     for n in n_ensemble
-        X[:,n] = x
+        X[:, n] = vcat(initialize(s)[1], [0]) # N(0) = 0
     end
 
-    alpha = exp(-600/3600) # exp(-dt/T) dt = 10 minutes, T = 6 hours
+    alpha = exp(-600 / 3600) # exp(-dt/T) dt = 10 minutes, T = 6 hours
 
     t = s["t"]
-    times = s["times"]
-    
-    ref_time = s["reftime"]
-
     series_data = zeros(Float64, length(ilocs), length(t))
     nt = length(t)
-    function load_observations()
-        #load observations
-        (obs_times, obs_values) = read_series("tide_cadzand.txt")
-        observed_data = zeros(Float64, length(ilocs), length(obs_times))
-        observed_data[1, :] = obs_values[:]
-        (obs_times, obs_values) = read_series("tide_vlissingen.txt")
-        observed_data[2, :] = obs_values[:]
-        (obs_times, obs_values) = read_series("tide_terneuzen.txt")
-        observed_data[3, :] = obs_values[:]
-        (obs_times, obs_values) = read_series("tide_hansweert.txt")
-        observed_data[4, :] = obs_values[:]
-        (obs_times, obs_values) = read_series("tide_bath.txt")
-        observed_data[5, :] = obs_values[:]
 
-        return observed_data
-    end
+    observed_data = load_observations(s)
 
-    observed_data = load_observations()
-    observed_data = observed_data[1:5, :]
-    #println(size(observed_data))
-    
     A_old = s["A"]
     B_old = s["B"]
     A = [A_old zeros(size(A_old, 1)); zeros(1, size(A_old, 2)) 1]
     A_inv = inv(A)
-    
+
     B = [B_old zeros(size(B_old, 1)); zeros(1, size(B_old, 2)) 0]
-    B[1, end] = 1; B[end, end] = alpha
+    B[1, end] = 1
+    B[end, end] = alpha
 
     u = zeros(Float64, size(B)[1])
     X = vcat(X, zeros(1, size(X, 2)))
 
-    H = zeros(Float64, length(ilocs)-4, length(x)+1)
+    H = zeros(Float64, length(ilocs) - 4, length(x) + 1)
     for i = 1:length(ilocs)-4
         H[i, ilocs[i]] = 1.0
     end
@@ -360,18 +359,15 @@ function simulate_ENKF(n_ensemble::Int64)
         X = timestep_ENKF(X, A_inv, B, u, i, s)
         # Compute the ensemble mean
         x = mean(X, dims=2)
-
-        
-
         P = cov(X, dims=2)
 
-        if issuccess(cholesky(H * P * H'; check = false))
-            K_K = P * H' * inv(H * P * H')
+        if issuccess(cholesky(H * P * H'; check=false))
+            K_K = (P * H') \ (H * P * H')
         else
-            K_K = P * H' * inv(H * P * H' + 0.1 * I)
+            K_K = (P * H') \ (H * P * H' + 0.1 * I)
         end
-        #println(size(X), size(K_K), size(observed_data[:, i]), size(H*X))       
-        X = X + K_K * (observed_data[:, i] .- H * X)
+        #println(size(X), size(K_K), size(observed_data[:, i]), size(H*X))
+        X = X + K_K * (observed_data[:, i] .- H * X) # does this work column wise?
         x = mean(X, dims=2)
         x = x[1:end-1, :]
         if plot_maps == true
