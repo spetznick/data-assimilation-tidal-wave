@@ -25,6 +25,8 @@ using LinearAlgebra
 using Statistics
 using Latexify
 using DataFrames
+using CSV
+
 
 plot_maps = false #true or false - plotting makes the runs much slower
 build_latex_tables = true #true or false - build latex tables
@@ -162,7 +164,6 @@ function initialize(s) #return (x,t) at initial time
     return (x, t[1])
 end
 
-
 function update_ENKF(X, A_inv, B, u, H, observations)
     e = zeros(Float64, size(X)[1])
     e[1] = 1
@@ -181,6 +182,37 @@ function update_ENKF(X, A_inv, B, u, H, observations)
     println("K_K: $(sum(sum(abs.(K_K))))")
 
     x_new = x_new + K_K * (observations .- H * x_new) # does this work column wise?
+    return x_new, P
+end
+
+function update_ENKF_newest(X, A_inv, B, u, H, observations)
+    e = zeros(Float64, size(X)[1])
+    e[1] = 1
+    w = repeat(e, 1, size(X)[2])
+
+    U = A_inv * u
+    U = repeat(U, 1, size(X)[2])
+    M = A_inv * B
+    w[1, :] = (1 - exp(-600 / 3600)^2) * 0.2 * randn(size(w)[2]) # 1.0 should be 0.02
+
+    W = A_inv * w
+    x_new = M * X + U + W
+    x_old = copy(x_new)
+
+    x_mean = mean(x_new, dims=2)
+    
+    P = cov(x_new, dims=2)
+    
+    L_matrix = (x_new .- x_mean)*(1/sqrt(size(x_new)[2]-1))
+    
+    big_psi_matrix = H * L_matrix 
+    R = 0.001
+    K_K = L_matrix * big_psi_matrix' * inv(big_psi_matrix * big_psi_matrix' + R * I)
+    
+    observations = reshape(observations, size(observations)[1],1)
+    observations = repeat(observations, 1, size(H * x_new)[2])
+    x_new = x_new + K_K * (observations - (H * x_new)) 
+
     return x_new, P
 end
 
@@ -224,20 +256,29 @@ function plot_series(t, series_data, s, obs_data)
     end
 end
 
-function plot_state_for_gif(x, cov_data, s)
+function plot_state_for_gif(x, cov_data, s, observed_data, time)
     #plot all waterlevels and velocities at one time
+    #prepare observed data for plotting
+    ilocs = s["ilocs"][1:5]
+    observed_data = observed_data[1:5, :]
+
     xh = 0.001 * s["x_h"]
     xu = 0.001 * s["x_u"]
     p1 = plot()
     p2 = plot()
+    p1 = scatter!(p1, ilocs/2, observed_data[:,time+1], legend = true, ylims=(-3.0, 5.0), color=:red, markersize=2, label="measurment data")
     for i in 1:size(x, 2)
+        #println(observed_data[:, i])
         p1 = plot!(p1, xh, x[1:2:end-1, i], ylabel="h", ylims=(-3.0, 5.0), legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
         p2 = plot!(p2, xu, x[2:2:end, i], ylabel="u", ylims=(-2.0, 3.0), xlabel="x [km]", legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
+
+        # Add observed data to the plots
+        
+        #scatter!(p2, xu, observed_data[2:2:end, i], color=:red, markersize=2)
     end
     p = plot(p1, p2, layout=(2, 1))
     return p
 end
-
 
 function simulate_ENKF(n_ensemble::Int64, enkf::Bool)
     println("Running ensemble simulation with $(n_ensemble) members.")
@@ -284,10 +325,12 @@ function simulate_ENKF(n_ensemble::Int64, enkf::Bool)
     B[end, end] = alpha
 
     u = zeros(Float64, size(B)[1])
+
     H = zeros(Float64, length(ilocs) - 4, length(x) + 1)
     for i = 1:length(ilocs)-4
         H[i, ilocs[i]] = 1.0
     end
+
 
     t = s["t"]
     series_data = zeros(Float64, length(ilocs), length(t))
@@ -295,9 +338,12 @@ function simulate_ENKF(n_ensemble::Int64, enkf::Bool)
     cov_data = zeros(Float64, length(x), length(t))
     nt = length(t)
     observed_data = load_observations(s)
+
     for i = 1:nt
         u[1] = s["h_left"][i]
-        X, P = update_ENKF(X, A_inv, B, u, H, observed_data[1:5, i+1])
+        #println("Time: $(i) of $(nt)", observed_data[1:5, i])
+
+        X, P = update_ENKF_newest(X, A_inv, B, u, H, observed_data[1:5, i+1])
         x = mean(X[1:end-1, :], dims=2)
         if plot_maps
             plot_state(x, i, s; cov_data=diag(P[1:end-1, 1:end-1]), enkf=enkf) #Show spatial plot.
@@ -307,7 +353,6 @@ function simulate_ENKF(n_ensemble::Int64, enkf::Bool)
         full_state_data[:, :, i] = X[1:end-1, :]
         cov_data[:, i] = diag(P[1:end-1, 1:end-1])
     end
-
     #plot timeseries
     plot_series(t, series_data, s, observed_data)
 
@@ -328,7 +373,7 @@ function simulate_ENKF(n_ensemble::Int64, enkf::Bool)
         println("You can plotting of maps off by setting plot_maps to false.")
         println("This will make the computation much faster.")
     end
-    return full_state_data, cov_data, s
+    return full_state_data, observed_data, cov_data, s
 end
 
 function load_observations(settings)
@@ -406,7 +451,6 @@ function compute_wave_propagation_speed(series_data, s::Dict)
     return wave_speed
 end
 
-
 function build_latex_table_bias_rmse(biases, rmses, ENKF)
     names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
     df = DataFrame(Locations=names, biases=biases, rmses=rmses)
@@ -421,9 +465,9 @@ function build_latex_table_bias_rmse(biases, rmses, ENKF)
     end
 end
 
-full_state_data, cov_data, s = simulate_ENKF(5, enkf)
+full_state_data, observed_data, cov_data, s = simulate_ENKF(5, enkf)
 anim = @animate for i ∈ 1:length(s["t"])
-    plot_state_for_gif(full_state_data[:, :, i], cov_data, s)
+    plot_state_for_gif(full_state_data[:, :, i], cov_data, s, observed_data, i)
 end
 
 gif(anim, "figures/fig_map_enkf.gif", fps=10)
