@@ -171,14 +171,15 @@ function update_ENKF(X, A_inv, B, u, H, observations)
     U = A_inv * u
     U = repeat(U, 1, size(X)[2])
     M = A_inv * B
-    w[1, :] = (1 - exp(-600 / 3600)^2) * 1 * randn(size(w)[2]) # 1.0 should be 0.02
+    w[1, :] = (1 - exp(-600 / 3600)^2) * 0.02 * randn(size(w)[2]) # 1.0 should be 0.02
     W = A_inv * w
     x_new = M * X + U + W
 
     P = cov(x_new, dims=2)
     r = 0.1
     K_K = (P * H') * inv(H * P * H' + r * I)
-    # print("K_K: $(K_K), ")
+    println("K_K: $(sum(sum(abs.(K_K))))")
+
     x_new = x_new + K_K * (observations .- H * x_new) # does this work column wise?
     return x_new, P
 end
