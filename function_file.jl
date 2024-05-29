@@ -184,7 +184,7 @@ function plot_series(t, series_data, s, obs_data, loc_names, mode)
 
     println(loc_names)
     nseries = length(loc_names)
-    if mode["enkf"]
+    if mode["use_ensembles"]
         enkf_suffix = "_ENKF"
     else
         enkf_suffix = ""
@@ -214,7 +214,7 @@ function plot_state_for_gif(x, cov_data, s, observed_data, time, mode)
     
     p1 = plot()
     p2 = plot()
-    p1 = scatter!(p1, ilocs/2, observed_data[:,time+1], legend = true, ylims=(-3.0, 5.0), color=:red, markersize=2, label="measurment data")
+    p1 = scatter!(p1, ilocs / 2, observed_data[:, time+1], legend=true, ylims=(-3.0, 5.0), color=:red, markersize=2, label="measurment data")
     for i in 1:size(x, 2)
 
         p1 = plot!(p1, xh, x[1:2:end-1, i], ylabel="h", ylims=(-3.0, 5.0), legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
@@ -233,7 +233,19 @@ function bias_at_locations(data1, data2, names)
 
     println("nseries: $(nseries)")
     for i = 1:nseries
-        biases[i] = compute_bias(data1[i, :], data2[i, :], names[i])
+        biases[i] = compute_bias(data1[i, :], data2[i, :])
+    end
+    return biases
+end
+
+function bias_at_locations(data1, data2, names)
+    println("Computing bias at locations.")
+    biases = zeros(Float64, length(names))
+    nseries = length(names)
+
+    println("nseries: $(nseries)")
+    for i = 1:nseries
+        biases[i] = compute_bias(data1[i, :], data2[i, :])
     end
     return biases
 end
@@ -242,22 +254,24 @@ function rmse_at_locations(data1, data2, names)
     nseries = length(names)
     rmses = zeros(Float64, length(names))
     for i = 1:nseries
-        rmses[i] = compute_rmse(data1[i, :], data2[i, :], names[i])
+        rmses[i] = compute_rmse(data1[i, :], data2[i, :])
     end
     return rmses
 end
 
-function compute_bias(data1, data2, label)
-    residual = data1 - data2[2:end, :]
-    bias = Statistics.mean(residual)
-    # println("Bias at $(label): $(bias)")
-    return bias
+function compute_mae(data1::Vector, data2::Vector)
+    bias = abs.(data1 - data2)
+    return Statistics.mean(bias)
 end
 
-function compute_rmse(data1, data2, label)
-    residual = data1 - data2[2:end, :]
+function compute_bias(data1::Vector, data2::Vector)
+    bias = data1 - data2
+    return Statistics.mean(bias)
+end
+
+function compute_rmse(data1::Vector, data2::Vector)
+    residual = data1 - data2
     rmse = 1 / length(residual) * sqrt(sum(residual .^ 2))
-    # println("RMSE at $(label): $(rmse)")
     return rmse
 end
 
@@ -287,7 +301,7 @@ end
 function build_latex_table_bias_rmse(biases, rmses, mode, names)
     df = DataFrame(Locations=names, biases=biases, rmses=rmses)
     table = latexify(df, env=:table)
-    if mode["enkf"]
+    if mode["use_ensembles"]
         enkf_suffix = "_ENKF"
     else
         enkf_suffix = ""
@@ -297,14 +311,14 @@ function build_latex_table_bias_rmse(biases, rmses, mode, names)
     end
 end
 
-function compute_statistics(series_data, observed_data, names, mode, index_start)
+function compute_statistics(series_data, observed_data, names, mode, index_start, obs_index_start)
     # Initialize arrays for biases and rmses
     biases = zeros(Float64, length(names))
     rmses = zeros(Float64, length(names))
 
     # Compute biases and rmses starting from index_start
-    biases = bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], names)
-    rmses = rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], names)
+    biases = bias_at_locations(series_data[:, index_start:end], observed_data[:, obs_index_start:end], names)
+    rmses = rmse_at_locations(series_data[:, index_start:end], observed_data[:, obs_index_start:end], names)
 
     # Optionally build LaTeX table
     if mode["build_latex_tables"]

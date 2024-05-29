@@ -14,7 +14,7 @@ include("function_file.jl") #wir müssen auch zum zeitpunkt t=0 noch den state s
 mode = Dict(
     "plot_maps" => false,  # true or false - plotting makes the runs much slower
     "build_latex_tables" => false,  # true or false - build latex tables
-    "enkf" => true,  # true or false - run ensemble Kalman filter
+    "use_ensembles" => true,  # true or false - run simulations as ensemble
     "n_ensemble" => 50, # number of ensemble members
     "location_used" => 1:5,  # locations used in the analysis
     "measurement_noise" => 10e-2, # measurement noise 10e-2 is good value because of dimensions and shit
@@ -32,7 +32,7 @@ seconds_to_hours = 1.0 / hours_to_seconds
 
 function update_ENKF_newest(X, A_inv, B, u, H, observations, mode)
     # Initialize e vector and replicate it to match the size of X
-    
+
     e = zeros(Float64, size(X, 1))
     w = repeat(e, 1, size(X, 2))
 
@@ -49,7 +49,7 @@ function update_ENKF_newest(X, A_inv, B, u, H, observations, mode)
     W = A_inv * w
     # Update state estimates
     x_new = M * X + U + W
-    
+
     # Calculate the mean of the new state estimates
     x_mean = mean(x_new, dims=2)
 
@@ -57,12 +57,12 @@ function update_ENKF_newest(X, A_inv, B, u, H, observations, mode)
     L_matrix = (x_new .- x_mean) / sqrt(size(x_new, 2) - 1)
 
     # Compute the covariance matrix
-    P = L_matrix * L_matrix'    
+    P = L_matrix * L_matrix'
 
     if mode["use_Kalman"]
         # Compute the big Psi matrix
         big_psi_matrix = H * L_matrix
-        
+
         # Compute the Kalman gain matrix
         K_K = L_matrix * big_psi_matrix' * inv(big_psi_matrix * big_psi_matrix' + mode["measurement_noise"] * I)
 
@@ -73,16 +73,16 @@ function update_ENKF_newest(X, A_inv, B, u, H, observations, mode)
         x_new = x_new + K_K * (observations - (H * x_new))
 
         return x_new, P
-    else 
+    else
         return x_new, P
     end
 end
 
 function simulate_ENKF(mode)
-    
+
     s = settings()
     (x, t0) = initialize(s)
-    
+
     #Load relevant kram
     ilocs = s["ilocs"]
     names = s["names"]
@@ -90,8 +90,8 @@ function simulate_ENKF(mode)
     t = s["t"]
     A_old = s["A"]
     B_old = s["B"]
-    
-    if mode["enkf"]
+
+    if mode["use_ensembles"]
         X = zeros(Float64, length(x) + 1, mode["n_ensemble"])
         for n in mode["n_ensemble"]
             X[:, n] = vcat(initialize(s)[1], [0]) # N(0) = 0
@@ -110,7 +110,7 @@ function simulate_ENKF(mode)
         B[1, end] = 1
         B[end, end] = mode["alpha"]
     else
-        X = zeros(Float64, length(x)+1)
+        X = zeros(Float64, length(x) + 1)
         X = initialize(s)[1]
         X = reshape(X, length(X), 1)
 
@@ -124,20 +124,20 @@ function simulate_ENKF(mode)
     A_inv = inv(A)
 
     u = zeros(Float64, size(B)[1])
-    
+
     series_data = zeros(Float64, length(ilocs), length(t))
     cov_data = zeros(Float64, length(x), length(t))
 
     nt = length(t)
-  
+
     H = zeros(Float64, length(mode["location_used"]), length(x) + 1)
-    j=0
+    j = 0
     for i = mode["location_used"]
         j += 1
         H[j, ilocs[i]] = 1.0
     end
 
-    if mode["run twin experiment"] == false
+    if ~mode["run twin experiment"]
         observed_data = load_observations(s)
         observed_data = observed_data[mode["location_used"], :]
     else
@@ -147,15 +147,15 @@ function simulate_ENKF(mode)
     
     for i = 1:nt
         u[1] = s["h_left"][i]
-        
-        X, P = update_ENKF_newest(X, A_inv, B, u, H, observed_data[:, i],mode)
+
+        X, P = update_ENKF_newest(X, A_inv, B, u, H, observed_data[:, i], mode)
         x = mean(X[1:end-1, :], dims=2)
         if mode["plot_maps"]
             plot_state(x, i, s; cov_data=diag(P[1:end-1, 1:end-1]), enkf=enkf) #Show spatial plot.
             #Very instructive, but turn off for production
         end
         series_data[:, i] = x[ilocs]
-        if mode["enkf"]
+        if mode["use_ensembles"]
             full_state_data[:, :, i] = X[1:end-1, :]
             cov_data[:, i] = diag(P[1:end-1, 1:end-1])
         else
@@ -165,7 +165,11 @@ function simulate_ENKF(mode)
     end
 
     plot_series(t, series_data, s, observed_data, names, mode)
-    #compute_statistics(series_data, observed_data, names, mode, 62)
+    println(size(series_data), size(observed_data), size(full_state_data), size(cov_data))
+    compute_statistics(series_data, observed_data, names, mode, 62, 63)
+
+    if mode["create_data"]             #mode["use_ensembles"] == false && mode["use_Kalman"] == false && mode["system_noise"] > 0.0
+        #full_state_data = full_state_data'
 
     if mode["create_data"]
         println("Twin experiment, save data", size(full_state_data))
