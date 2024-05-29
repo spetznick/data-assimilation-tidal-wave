@@ -16,13 +16,13 @@ mode = Dict(
     "build_latex_tables" => false,  # true or false - build latex tables
     "enkf" => true,  # true or false - run ensemble Kalman filter
     "n_ensemble" => 50, # number of ensemble members
-    "location_used" => 2:5,  # locations used in the analysis
+    "location_used" => 1:5,  # locations used in the analysis
     "measurement_noise" => 10e-2, # measurement noise 10e-2 is good value because of dimensions and shit
     "system_noise" => 0.2,  # system noise # 0.2 is our calculated value
     "use_Kalman" => true,  # do Kalman stuff
     "create_data" => false,
-    "alpha" => exp(-600 / 3600),
-    "run twin experiment" => true,
+    "alpha" => exp(-10/(6*60)),
+    "run twin experiment" => false,
 )
 
 minutes_to_seconds = 60.0
@@ -34,7 +34,6 @@ function update_ENKF_newest(X, A_inv, B, u, H, observations, mode)
     # Initialize e vector and replicate it to match the size of X
     
     e = zeros(Float64, size(X, 1))
-    e[1] = 1
     w = repeat(e, 1, size(X, 2))
 
     # Compute U and replicate it to match the size of X
@@ -44,9 +43,8 @@ function update_ENKF_newest(X, A_inv, B, u, H, observations, mode)
     M = A_inv * B
 
     # Update the first row of w with random values
-    alpha_squared = exp(-600 / 3600)^2
-    w[1, :] = (1 - alpha_squared) * mode["system_noise"] * randn(size(w, 2))
-
+    alpha_squared = mode["alpha"]^2
+    w[end, :] = sqrt(1 - alpha_squared) * mode["system_noise"] * randn(size(w, 2))
     # Compute W
     W = A_inv * w
     # Update state estimates
@@ -123,15 +121,13 @@ function simulate_ENKF(mode)
         B = B_old
     end
     
-
-
     A_inv = inv(A)
 
     u = zeros(Float64, size(B)[1])
     
     series_data = zeros(Float64, length(ilocs), length(t))
-
     cov_data = zeros(Float64, length(x), length(t))
+
     nt = length(t)
   
     H = zeros(Float64, length(mode["location_used"]), length(x) + 1)
@@ -144,13 +140,10 @@ function simulate_ENKF(mode)
     if mode["run twin experiment"] == false
         observed_data = load_observations(s)
         observed_data = observed_data[mode["location_used"], :]
-        println("Observed data: ", size(observed_data))
     else
         observed_data = load("twin_0.2.jld", "Twin Data")
-        println("Observed data: ", size(observed_data))
-        observed_data = observed_data[mode["location_used"],:] #Optionally
+        observed_data = observed_data[mode["location_used"],:]
     end
-    println("Observed data: ", size(observed_data))
     
     for i = 1:nt
         u[1] = s["h_left"][i]
@@ -172,12 +165,9 @@ function simulate_ENKF(mode)
     end
 
     plot_series(t, series_data, s, observed_data, names, mode)
-    println(size(series_data), size(observed_data), size(full_state_data), size(cov_data))
-    compute_statistics(series_data, observed_data, names, mode, 62)
+    #compute_statistics(series_data, observed_data, names, mode, 62)
 
-    if mode["create_data"]             #mode["enkf"] == false && mode["use_Kalman"] == false && mode["system_noise"] > 0.0
-        #full_state_data = full_state_data'
-
+    if mode["create_data"]
         println("Twin experiment, save data", size(full_state_data))
         title = "twin_$(mode["system_noise"]).jld"
         save(title, "Twin Data", full_state_data)
@@ -187,8 +177,8 @@ function simulate_ENKF(mode)
 end
 
 full_state_data, observed_data, cov_data, s = simulate_ENKF(mode)
-
-anim = @animate for i ∈ 1:length(s["t"])
+println(size(cov_data))
+anim = @animate for i ∈ 1:(length(s["t"])-1)
     plot_state_for_gif(full_state_data[:, :, i], cov_data, s, observed_data, i, mode)
 end
 

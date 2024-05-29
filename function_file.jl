@@ -130,6 +130,7 @@ function initialize(s) #return (x,t) at initial time
     xlocs_waterlevel = [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L]
     ilocs = vcat(map(x -> round(Int, x), xlocs_tide ./ dx) .* 2 .+ 1, map(x -> round(Int, x), xlocs_waterlevel ./ dx) .* 2 .+ 2)
     loc_names = String[]
+
     s["ilocs"] = ilocs
     names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
     s["names"] = names
@@ -201,23 +202,24 @@ function plot_series(t, series_data, s, obs_data, loc_names, mode)
     end
 end
 
-function plot_state_for_gif(x, cov_data, s, observed_data, time,mode)
+function plot_state_for_gif(x, cov_data, s, observed_data, time, mode)
     #plot all waterlevels and velocities at one time
     #prepare observed data for plotting
+    
     ilocs = s["ilocs"][mode["location_used"]]
     observed_data = observed_data[:, :]
 
     xh = 0.001 * s["x_h"]
     xu = 0.001 * s["x_u"]
+    
     p1 = plot()
     p2 = plot()
     p1 = scatter!(p1, ilocs/2, observed_data[:,time+1], legend = true, ylims=(-3.0, 5.0), color=:red, markersize=2, label="measurment data")
     for i in 1:size(x, 2)
-        #println(observed_data[:, i])
+
         p1 = plot!(p1, xh, x[1:2:end-1, i], ylabel="h", ylims=(-3.0, 5.0), legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
         p2 = plot!(p2, xu, x[2:2:end, i], ylabel="u", ylims=(-2.0, 3.0), xlabel="x [km]", legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
 
-        # Add observed data to the plots
     end
     p = plot(p1, p2, layout=(2, 1))
     return p
@@ -226,7 +228,6 @@ end
 #About Statistics
 function bias_at_locations(data1, data2, names)
     println("Computing bias at locations.")
-    #names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
     biases = zeros(Float64, length(names))
     nseries = length(names)
 
@@ -238,7 +239,6 @@ function bias_at_locations(data1, data2, names)
 end
 
 function rmse_at_locations(data1, data2, names)
-    #names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
     nseries = length(names)
     rmses = zeros(Float64, length(names))
     for i = 1:nseries
@@ -249,7 +249,7 @@ end
 
 function compute_bias(data1, data2, label)
     residual = data1 - data2[2:end, :]
-    bias = Statistics.std(residual)
+    bias = Statistics.mean(residual)
     # println("Bias at $(label): $(bias)")
     return bias
 end
