@@ -183,7 +183,7 @@ function plot_series(t, series_data, s, obs_data, loc_names, mode)
 
     println(loc_names)
     nseries = length(loc_names)
-    if mode["enkf"]
+    if mode["use_ensembles"]
         enkf_suffix = "_ENKF"
     else
         enkf_suffix = ""
@@ -257,17 +257,17 @@ function rmse_at_locations(data1, data2, names)
     return rmses
 end
 
-function compute_mae(data1::Vector{T}, data2::Vector{T})
+function compute_mae(data1::Vector, data2::Vector)
     bias = abs.(data1 - data2)
     return Statistics.mean(bias)
 end
 
-function compute_bias(data1::Vector{T}, data2::Vector{T})
+function compute_bias(data1::Vector, data2::Vector)
     bias = data1 - data2
     return Statistics.mean(bias)
 end
 
-function compute_rmse(data1::Vector{T}, data2::Vector{T})
+function compute_rmse(data1::Vector, data2::Vector)
     residual = data1 - data2
     rmse = 1 / length(residual) * sqrt(sum(residual .^ 2))
     return rmse
@@ -299,7 +299,7 @@ end
 function build_latex_table_bias_rmse(biases, rmses, mode, names)
     df = DataFrame(Locations=names, biases=biases, rmses=rmses)
     table = latexify(df, env=:table)
-    if mode["enkf"]
+    if mode["use_ensembles"]
         enkf_suffix = "_ENKF"
     else
         enkf_suffix = ""
@@ -309,14 +309,14 @@ function build_latex_table_bias_rmse(biases, rmses, mode, names)
     end
 end
 
-function compute_statistics(series_data, observed_data, names, mode, index_start)
+function compute_statistics(series_data, observed_data, names, mode, index_start, obs_index_start)
     # Initialize arrays for biases and rmses
     biases = zeros(Float64, length(names))
     rmses = zeros(Float64, length(names))
 
     # Compute biases and rmses starting from index_start
-    biases = bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], names)
-    rmses = rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], names)
+    biases = bias_at_locations(series_data[:, index_start:end], observed_data[:, obs_index_start:end], names)
+    rmses = rmse_at_locations(series_data[:, index_start:end], observed_data[:, obs_index_start:end], names)
 
     # Optionally build LaTeX table
     if mode["build_latex_tables"]
