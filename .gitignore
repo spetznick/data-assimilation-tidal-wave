@@ -24,6 +24,6 @@ docs/site/
 # environment.
 Manifest.toml
 
-figures/
+figures/*
 
 *.png
