@@ -14,13 +14,13 @@ include("function_file.jl") #wir müssen auch zum zeitpunkt t=0 noch den state s
 mode = Dict(
     "plot_maps" => false,  # true or false - plotting makes the runs much slower
     "build_latex_tables" => false,  # true or false - build latex tables
-    "enkf" => false,  # true or false - run ensemble Kalman filter
+    "enkf" => true,  # true or false - run ensemble Kalman filter
     "n_ensemble" => 50, # number of ensemble members
     "location_used" => 2:5,  # locations used in the analysis
     "measurement_noise" => 10e-2, # measurement noise 10e-2 is good value because of dimensions and shit
     "system_noise" => 0.2,  # system noise # 0.2 is our calculated value
-    "use_Kalman" => false,  # do Kalman stuff
-    "create_data" => true,
+    "use_Kalman" => true,  # do Kalman stuff
+    "create_data" => false,
     "alpha" => exp(-600 / 3600),
     "run twin experiment" => true,
 )
@@ -73,6 +73,7 @@ function update_ENKF_newest(X, A_inv, B, u, H, observations, mode)
 
         # Update the state estimates with the Kalman gain
         x_new = x_new + K_K * (observations - (H * x_new))
+
         return x_new, P
     else 
         return x_new, P
@@ -97,37 +98,39 @@ function simulate_ENKF(mode)
         for n in mode["n_ensemble"]
             X[:, n] = vcat(initialize(s)[1], [0]) # N(0) = 0
         end
+        full_state_data = zeros(Float64, length(x), mode["n_ensemble"], length(t))
+        full_state_data[:, :, 1] = X[1:end-1, :]
+
+        A_ = cat(A_old, zeros(size(A_old, 1)), dims=2)
+        A_end = cat(zeros(1, size(A_old, 2)), 1, dims=2)
+        A = cat(A_, A_end, dims=1)
+
+        B_ = cat(B_old, zeros(size(B_old, 1)), dims=2)
+        B_end = cat(zeros(1, size(B_old, 2)), 1, dims=2)
+        B = cat(B_, B_end, dims=1)
+
+        B[1, end] = 1
+        B[end, end] = mode["alpha"]
     else
         X = zeros(Float64, length(x)+1)
         X = initialize(s)[1]
         X = reshape(X, length(X), 1)
-    end
-    
-    if mode["enkf"]
-        A_ = cat(A_old, zeros(size(A_old, 1)), dims=2)
-        A_end = cat(zeros(1, size(A_old, 2)), 1, dims=2)
-        A = cat(A_, A_end, dims=1)
-        B_ = cat(B_old, zeros(size(B_old, 1)), dims=2)
-        B_end = cat(zeros(1, size(B_old, 2)), 1, dims=2)
-        B = cat(B_, B_end, dims=1)
-        B[1, end] = 1
-        B[end, end] = mode["alpha"]
-    else
+
+        full_state_data = zeros(Float64, length(x), length(t))
+        full_state_data[:, 1] = X
+
         A = A_old
         B = B_old
     end
+    
+
 
     A_inv = inv(A)
 
     u = zeros(Float64, size(B)[1])
-
     
     series_data = zeros(Float64, length(ilocs), length(t))
-    if mode["enkf"]
-        full_state_data = zeros(Float64, length(x), mode["n_ensemble"], length(t))
-    else
-        full_state_data = zeros(Float64, length(x), length(t))
-    end
+
     cov_data = zeros(Float64, length(x), length(t))
     nt = length(t)
   
@@ -145,7 +148,7 @@ function simulate_ENKF(mode)
     else
         observed_data = load("twin_0.2.jld", "Twin Data")
         println("Observed data: ", size(observed_data))
-        #observed_data = observed_data[:, mode["location_used"]] #Optionally
+        observed_data = observed_data[mode["location_used"],:] #Optionally
     end
     println("Observed data: ", size(observed_data))
     
@@ -169,7 +172,7 @@ function simulate_ENKF(mode)
     end
 
     plot_series(t, series_data, s, observed_data, names, mode)
-
+    println(size(series_data), size(observed_data), size(full_state_data), size(cov_data))
     compute_statistics(series_data, observed_data, names, mode, 62)
 
     if mode["create_data"]             #mode["enkf"] == false && mode["use_Kalman"] == false && mode["system_noise"] > 0.0
