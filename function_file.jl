@@ -309,16 +309,17 @@ function build_latex_table_bias_rmse(biases, rmses, mode, names)
     open("tables/q3_bias_rmse_table$(enkf_suffix).txt", "w") do io
         println(io, table)
     end
+
 end
 
-function compute_statistics(series_data, observed_data, names, mode, index_start, obs_index_start)
+function compute_statistics(series_data, observed_data, names, mode, n)
     # Initialize arrays for biases and rmses
     biases = zeros(Float64, length(names))
     rmses = zeros(Float64, length(names))
 
     # Compute biases and rmses starting from index_start
-    biases = bias_at_locations(series_data[:, index_start:end], observed_data[:, obs_index_start:end], names)
-    rmses = rmse_at_locations(series_data[:, index_start:end], observed_data[:, obs_index_start:end], names)
+    biases = bias_at_locations(series_data[:, end-n+1:end], observed_data[:, end-n+1:end], names)
+    rmses = rmse_at_locations(series_data[:, end-n+1:end], observed_data[:, end-n+1:end], names)
 
     # Optionally build LaTeX table
     if mode["build_latex_tables"]

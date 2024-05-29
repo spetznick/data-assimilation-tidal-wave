@@ -22,7 +22,7 @@ mode = Dict(
     "use_Kalman" => true,  # do Kalman stuff
     "create_data" => false,
     "alpha" => exp(-10/(6*60)),
-    "run twin experiment" => false,
+    "run twin experiment" => true,
 )
 
 minutes_to_seconds = 60.0
@@ -165,11 +165,8 @@ function simulate_ENKF(mode)
     end
 
     plot_series(t, series_data, s, observed_data, names, mode)
-    println(size(series_data), size(observed_data), size(full_state_data), size(cov_data))
-    compute_statistics(series_data, observed_data, names, mode, 62, 63)
-
-    if mode["create_data"]             #mode["use_ensembles"] == false && mode["use_Kalman"] == false && mode["system_noise"] > 0.0
-        #full_state_data = full_state_data'
+    println(size(series_data), size(observed_data))
+    compute_statistics(series_data, observed_data, names, mode, 225) #die letzten 225 punkte werden für die statistik verwendet
 
     if mode["create_data"]
         println("Twin experiment, save data", size(full_state_data))
@@ -181,12 +178,8 @@ function simulate_ENKF(mode)
 end
 
 full_state_data, observed_data, cov_data, s = simulate_ENKF(mode)
-println(size(cov_data))
 anim = @animate for i ∈ 1:(length(s["t"])-1)
     plot_state_for_gif(full_state_data[:, :, i], cov_data, s, observed_data, i, mode)
 end
 
 gif(anim, "figures/fig_map_enkf.gif", fps=10)
-
-
-
