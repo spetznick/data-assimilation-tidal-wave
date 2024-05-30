@@ -9,14 +9,14 @@ using DataFrames
 using CSV
 using JLD
 
-include("function_file.jl") #wir müssen auch zum zeitpunkt t=0 noch den state speichern fürs twin, das pssiert noch nicht
+include("function_file.jl") 
 
 mode = Dict(
     "plot_maps" => false,  # true or false - plotting makes the runs much slower
     "build_latex_tables" => false,  # true or false - build latex tables
     "use_ensembles" => true,  # true or false - run simulations as ensemble
     "n_ensemble" => 50, # number of ensemble members
-    "location_used" => 1:5,  # locations used in the analysis
+    "location_used" => 2:5,  # locations used in the analysis
     "measurement_noise" => 10e-2, # measurement noise 10e-2 is good value because of dimensions and shit
     "system_noise" => 0.2,  # system noise # 0.2 is our calculated value
     "use_Kalman" => true,  # do Kalman stuff
@@ -129,7 +129,6 @@ function simulate_ENKF(mode)
     cov_data = zeros(Float64, length(x), length(t))
 
     nt = length(t)
-
     H = zeros(Float64, length(mode["location_used"]), length(x) + 1)
     j = 0
     for i = mode["location_used"]
@@ -138,11 +137,15 @@ function simulate_ENKF(mode)
     end
 
     if ~mode["run twin experiment"]
+        println("Running with real data")
         observed_data = load_observations(s)
         observed_data = observed_data[mode["location_used"], :]
+        observed_data = observed_data[:, 2:end]
+
+        println(size(observed_data))
     else
         observed_data = load("twin_0.2.jld", "Twin Data")
-        observed_data = observed_data[mode["location_used"],:]
+        observed_data = observed_data[s["ilocs"][mode["location_used"]],:]
     end
     
     for i = 1:nt
@@ -150,6 +153,7 @@ function simulate_ENKF(mode)
 
         X, P = update_ENKF_newest(X, A_inv, B, u, H, observed_data[:, i], mode)
         x = mean(X[1:end-1, :], dims=2)
+
         if mode["plot_maps"]
             plot_state(x, i, s; cov_data=diag(P[1:end-1, 1:end-1]), enkf=enkf) #Show spatial plot.
             #Very instructive, but turn off for production
@@ -165,7 +169,7 @@ function simulate_ENKF(mode)
     end
 
     plot_series(t, series_data, s, observed_data, names, mode)
-    println(size(series_data), size(observed_data))
+
     compute_statistics(series_data, observed_data, names, mode, 225) #die letzten 225 punkte werden für die statistik verwendet
 
     if mode["create_data"]
