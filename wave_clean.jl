@@ -14,14 +14,14 @@ include("function_file.jl")
 mode = Dict(
     "plot_maps" => false,  # true or false - plotting makes the runs much slower
     "build_latex_tables" => false,  # true or false - build latex tables
-    "use_ensembles" => true,  # true or false - run simulations as ensemble
+    "use_ensembles" => false,  # true or false - run simulations as ensemble
     "n_ensemble" => 50, # number of ensemble members
     "location_used" => 2:5,  # locations used in the analysis
     "measurement_noise" => 10e-2, # measurement noise 10e-2 is good value because of dimensions and shit
     "system_noise" => 0.2,  # system noise # 0.2 is our calculated value
-    "use_Kalman" => true,  # do Kalman stuff
-    "create_data" => false,
-    "alpha" => exp(-10/(6*60)),
+    "use_Kalman" => false,  # do Kalman stuff
+    "create_data" => true,
+    "alpha" => exp(-10 / (6 * 60)),
     "run twin experiment" => true,
 )
 
@@ -120,7 +120,7 @@ function simulate_ENKF(mode)
         A = A_old
         B = B_old
     end
-    
+
     A_inv = inv(A)
 
     u = zeros(Float64, size(B)[1])
@@ -145,9 +145,14 @@ function simulate_ENKF(mode)
         println(size(observed_data))
     else
         observed_data = load("twin_0.2.jld", "Twin Data")
-        observed_data = observed_data[s["ilocs"][mode["location_used"]],:]
+        if ndims(observed_data) == 3
+            # If the twin eperiment is run with ensembles use the mean and collapse dimenions
+            observed_data = reshape(mean(observed_data, dims=2), (size(observed_data, 1), size(observed_data, 3)))
+        else
+            observed_data = observed_data[mode["location_used"], :]
+        end
     end
-    
+
     for i = 1:nt
         u[1] = s["h_left"][i]
 
@@ -155,7 +160,7 @@ function simulate_ENKF(mode)
         x = mean(X[1:end-1, :], dims=2)
 
         if mode["plot_maps"]
-            plot_state(x, i, s; cov_data=diag(P[1:end-1, 1:end-1]), enkf=enkf) #Show spatial plot.
+            plot_state(x, i, s; cov_data=diag(P[1:end-1, 1:end-1]), enkf=mode["use_Kalman"]) #Show spatial plot.
             #Very instructive, but turn off for production
         end
         series_data[:, i] = x[ilocs]
@@ -164,7 +169,6 @@ function simulate_ENKF(mode)
             cov_data[:, i] = diag(P[1:end-1, 1:end-1])
         else
             full_state_data[:, i] = X
-            #cov_data[:, i] = diag(P[1:end-1, 1:end-1])
         end
     end
 
@@ -183,7 +187,11 @@ end
 
 full_state_data, observed_data, cov_data, s = simulate_ENKF(mode)
 anim = @animate for i ∈ 1:(length(s["t"])-1)
-    plot_state_for_gif(full_state_data[:, :, i], cov_data, s, observed_data, i, mode)
+    if mode["use_ensembles"]
+        plot_state_for_gif(full_state_data[:, :, i], cov_data, s, observed_data, i, mode)
+    else
+        plot_state_for_gif(full_state_data[:, i], cov_data, s, observed_data, i, mode)
+    end
 end
 
 gif(anim, "figures/fig_map_enkf.gif", fps=10)
