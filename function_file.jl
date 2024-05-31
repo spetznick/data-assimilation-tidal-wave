@@ -214,7 +214,7 @@ function plot_state_for_gif(x, cov_data, s, observed_data, time, mode)
     
     p1 = plot()
     p2 = plot()
-    p1 = scatter!(p1, ilocs / 2, observed_data[:, time+1], legend=true, ylims=(-3.0, 5.0), color=:red, markersize=2, label="measurment data")
+    p1 = scatter!(p1, ilocs / 2, observed_data[:, time], legend=true, ylims=(-3.0, 5.0), color=:red, markersize=2, label="measurment data")
     for i in 1:size(x, 2)
 
         p1 = plot!(p1, xh, x[1:2:end-1, i], ylabel="h", ylims=(-3.0, 5.0), legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)

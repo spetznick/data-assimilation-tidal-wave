@@ -14,13 +14,13 @@ include("function_file.jl")
 mode = Dict(
     "plot_maps" => false,  # true or false - plotting makes the runs much slower
     "build_latex_tables" => false,  # true or false - build latex tables
-    "use_ensembles" => false,  # true or false - run simulations as ensemble
+    "use_ensembles" => true,  # true or false - run simulations as ensemble
     "n_ensemble" => 50, # number of ensemble members
     "location_used" => 2:5,  # locations used in the analysis
     "measurement_noise" => 10e-2, # measurement noise 10e-2 is good value because of dimensions and shit
     "system_noise" => 0.2,  # system noise # 0.2 is our calculated value
-    "use_Kalman" => false,  # do Kalman stuff
-    "create_data" => true,
+    "use_Kalman" => true,  # do Kalman stuff
+    "create_data" => false,
     "alpha" => exp(-10 / (6 * 60)),
     "run twin experiment" => true,
 )
@@ -149,7 +149,7 @@ function simulate_ENKF(mode)
             # If the twin eperiment is run with ensembles use the mean and collapse dimenions
             observed_data = reshape(mean(observed_data, dims=2), (size(observed_data, 1), size(observed_data, 3)))
         else
-            observed_data = observed_data[mode["location_used"], :]
+            observed_data = observed_data[s["ilocs"][mode["location_used"]], :]
         end
     end
 
