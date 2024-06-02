@@ -14,7 +14,11 @@ include("function_file.jl")
 
 mode = Dict(
     "plot_maps" => false,  # true or false - plotting makes the runs much slower
+<<<<<<< HEAD
     "build_latex_tables" => true,  # true or false - build latex tables
+=======
+    "build_latex_tables" => false,  # true or false - build latex tables
+>>>>>>> 0a6a0c06d9fd57df339242956b28301ea9f83f98
     "use_ensembles" => true,  # true or false - run simulations as ensemble
     "n_ensemble" => 50, # number of ensemble members
     "location_used" => 2:5,  # locations used in the analysis

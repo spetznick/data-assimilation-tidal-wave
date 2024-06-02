@@ -212,7 +212,7 @@ function simulate()
     xlocs_waterlevel = [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L, 0.99 * L]
     xlocs_velocity = [0.0 * L, 0.25 * L, 0.5 * L, 0.75 * L]
     ilocs = vcat(map(x -> round(Int, x), xlocs_waterlevel ./ dx) .* 2 .+ 1, map(x -> round(Int, x), xlocs_velocity ./ dx) .* 2 .+ 2)
-    # println(ilocs)
+
     loc_names = String[]
     names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
     for i = 1:length(xlocs_waterlevel)
