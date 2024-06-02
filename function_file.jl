@@ -5,6 +5,13 @@
     no_observation = 0
 end
 
+@enum AssimilateBC begin
+    keep_ensembles_apart = 0
+    use_mean = 1
+    use_cadzand = 2
+    use_zero = 3
+end
+
 struct MissingModeKeyException <: Exception
     key::String
 end
@@ -13,7 +20,8 @@ struct SyntheticWithEnsemblesException <: Exception
     key::String
 end
 
-function construct_system(x, settings, mode)
+function construct_system!(settings, mode)
+    size_x = 2 * settings["n"]
     # Construct the system matrices A and B
     #Load relevant kram
     names = settings["names"]
@@ -23,11 +31,11 @@ function construct_system(x, settings, mode)
     B_old = settings["B"]
 
     if mode["use_ensembles"]
-        X = zeros(Float64, length(x) + 1, mode["n_ensemble"])
+        X = zeros(Float64, size_x + 1, mode["n_ensemble"])
         for n in mode["n_ensemble"]
-            X[:, n] = vcat(initialize!(s)[1], [0]) # N(0) = 0
+            X[:, n] = vcat(initialize!(settings)[1], [0]) # N(0) = 0
         end
-        full_state_data = zeros(Float64, length(x), mode["n_ensemble"], length(t))
+        full_state_data = zeros(Float64, size_x, mode["n_ensemble"], length(t))
         full_state_data[:, :, 1] = X[1:end-1, :]
 
         A_ = cat(A_old, zeros(size(A_old, 1)), dims=2)
@@ -41,11 +49,11 @@ function construct_system(x, settings, mode)
         B[1, end] = 1
         B[end, end] = mode["alpha"]
     else
-        X = zeros(Float64, length(x) + 1)
+        X = zeros(Float64, size_x + 1)
         X = initialize!(settings)[1]
         X = reshape(X, length(X), 1)
 
-        full_state_data = zeros(Float64, length(x), length(t))
+        full_state_data = zeros(Float64, size_x, length(t))
         full_state_data[:, 1] = X
 
         A = A_old
@@ -235,12 +243,12 @@ function load_observations(settings, mode)
         observed_data = observed_data[mode["location_used"], :]
         observed_data = observed_data[:, 2:end]
     elseif mode["with_observation_data"] == synthetic
-        observed_data = load(mode["observation_file"], "Twin Data")
+        observed_data = load(mode["observation_file"], "synthetic data")
         if ndims(observed_data) == 3
-            # If the twin eperiment is run with ensembles use the mean and collapse dimenions
+            # If the twin eperiment is run with ensembles use the mean and collapse dimensions
             throw(SyntheticWithEnsemblesException("The twin experiment was probably run with ensembles. Set 'use_ensembles' in mode dict to false."))
         else
-            observed_data = observed_data[s["ilocs"][mode["location_used"]], :]
+            observed_data = observed_data[settings["ilocs"][mode["location_used"]], :]
         end
     elseif mode["with_observation_data"] == no_observation
         observed_data = nothing
@@ -251,7 +259,7 @@ function load_observations(settings, mode)
 end
 
 # About plotting
-function plot_state(x, i, s; cov_data, enkf=false)
+function plot_state(x, i, settings; cov_data, enkf=false)
     # println("plotting a map.")
     if enkf
         enkf_suffix = "_enkf"
@@ -259,9 +267,9 @@ function plot_state(x, i, s; cov_data, enkf=false)
         enkf_suffix = ""
     end
     #plot all waterlevels and velocities at one time
-    xh = 0.001 * s["x_h"]
+    xh = 0.001 * settings["x_h"]
     p1 = plot(xh, x[1:2:end], ylabel="h", ylims=(-3.0, 5.0), legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
-    xu = 0.001 * s["x_u"]
+    xu = 0.001 * settings["x_u"]
     p2 = plot(xu, x[2:2:end], ylabel="u", ylims=(-2.0, 3.0), xlabel="x [km]", legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
     p = plot(p1, p2, layout=(2, 1))
     savefig(p, "figures/fig_map$(enkf_suffix)_$(string(i,pad=3)).png")
@@ -290,19 +298,19 @@ function plot_series(t, series_data, obs_data, loc_names, mode)
     end
 end
 
-function plot_state_for_gif(x, cov_data, s, observed_data, time, mode)
+function plot_state_for_gif(x, cov_data, settings, observed_data, time, mode)
     #plot all waterlevels and velocities at one time
     #prepare observed data for plotting
 
-    ilocs = s["ilocs"][mode["location_used"]]
+    ilocs = settings["ilocs"][mode["location_used"]]
     observed_data = observed_data[:, :]
 
-    xh = 0.001 * s["x_h"]
-    xu = 0.001 * s["x_u"]
+    xh = 0.001 * settings["x_h"]
+    xu = 0.001 * settings["x_u"]
 
     p1 = plot()
     p2 = plot()
-    p1 = scatter!(p1, ilocs / 2, observed_data[:, time], legend=true, ylims=(-3.0, 5.0), color=:red, markersize=2, label="measurment data")
+    p1 = scatter!(p1, ilocs / 2, observed_data[:, time], legend=true, ylims=(-3.0, 5.0), color=:red, markersize=2, label="measurement data")
     for i in 1:size(x, 2)
 
         p1 = plot!(p1, xh, x[1:2:end-1, i], ylabel="h", ylims=(-3.0, 5.0), legend=false, ribbon=cov_data, fillalpha=0.2, fillcolor=:blue)
@@ -375,13 +383,13 @@ function compute_local_max_indices(x)
     return indices_local_maxima
 end
 
-function compute_wave_propagation_speed(series_data, s::Dict)
+function compute_wave_propagation_speed(series_data, settings::Dict)
     indices_local_maxima_left = compute_local_max_indices(series_data[1, :])
     indices_local_maxima_right = compute_local_max_indices(series_data[5, :])
     start_idx = 1
     indices_after_lhs_max = indices_local_maxima_right[indices_local_maxima_right.>indices_local_maxima_left[start_idx]]
-    L = s["L"]
-    dt = s["dt"]
+    L = settings["L"]
+    dt = settings["dt"]
     wave_speed = L / ((indices_after_lhs_max[1] - indices_local_maxima_left[start_idx]) * dt)
     return wave_speed
 end
