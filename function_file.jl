@@ -1,7 +1,7 @@
 @enum ObservationData begin
     tide = 1
     waterlevel = 2
-    twinexperiment = 3
+    synthetic = 3
     no_observation = 0
 end
 
@@ -9,7 +9,7 @@ struct MissingModeKeyException <: Exception
     key::String
 end
 
-struct TwinExperimentWithEnsemblesException <: Exception
+struct SyntheticWithEnsemblesException <: Exception
     key::String
 end
 
@@ -42,7 +42,7 @@ function construct_system(x, settings, mode)
         B[end, end] = mode["alpha"]
     else
         X = zeros(Float64, length(x) + 1)
-        X = initialize(s)[1]
+        X = initialize(settings)[1]
         X = reshape(X, length(X), 1)
 
         full_state_data = zeros(Float64, length(x), length(t))
@@ -234,11 +234,11 @@ function load_observations(settings, mode)
         observed_data[5, :] = obs_values[:]
         observed_data = observed_data[mode["location_used"], :]
         observed_data = observed_data[:, 2:end]
-    elseif mode["with_observation_data"] == twinexperiment
+    elseif mode["with_observation_data"] == synthetic
         observed_data = load(mode["observation_file"], "Twin Data")
         if ndims(observed_data) == 3
             # If the twin eperiment is run with ensembles use the mean and collapse dimenions
-            throw(TwinExperimentWithEnsemblesException("The twin experiment was probably run with ensembles. Set 'use_ensembles' in mode dict to false."))
+            throw(SyntheticWithEnsemblesException("The twin experiment was probably run with ensembles. Set 'use_ensembles' in mode dict to false."))
         else
             observed_data = observed_data[s["ilocs"][mode["location_used"]], :]
         end
