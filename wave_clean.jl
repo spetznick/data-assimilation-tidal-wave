@@ -9,20 +9,23 @@ using DataFrames
 using CSV
 using JLD
 
-include("function_file.jl") 
+include("function_file.jl")
+
 
 mode = Dict(
     "plot_maps" => false,  # true or false - plotting makes the runs much slower
-    "build_latex_tables" => false,  # true or false - build latex tables
-    "use_ensembles" => false,  # true or false - run simulations as ensemble
+    "build_latex_tables" => true,  # true or false - build latex tables
+    "use_ensembles" => true,  # true or false - run simulations as ensemble
     "n_ensemble" => 50, # number of ensemble members
     "location_used" => 2:5,  # locations used in the analysis
     "measurement_noise" => 10e-2, # measurement noise 10e-2 is good value because of dimensions and shit
     "system_noise" => 0.2,  # system noise # 0.2 is our calculated value
-    "use_Kalman" => false,  # do Kalman stuff
-    "create_data" => true,
+    "use_Kalman" => true,  # do Kalman stuff
+    "create_data" => false,
     "alpha" => exp(-10 / (6 * 60)),
-    "run twin experiment" => true,
+    # "run twin experiment" => false,
+    "with_observation_data" => tide, # choose which observations to use during assimilation
+    "observation_file" => "groundtruth_0.2.jld", # filename of the observation file
 )
 
 minutes_to_seconds = 60.0
@@ -82,44 +85,12 @@ function simulate_ENKF(mode)
 
     s = settings()
     (x, t0) = initialize(s)
-
-    #Load relevant kram
     ilocs = s["ilocs"]
     names = s["names"]
     names = names[mode["location_used"]]
     t = s["t"]
-    A_old = s["A"]
-    B_old = s["B"]
 
-    if mode["use_ensembles"]
-        X = zeros(Float64, length(x) + 1, mode["n_ensemble"])
-        for n in mode["n_ensemble"]
-            X[:, n] = vcat(initialize(s)[1], [0]) # N(0) = 0
-        end
-        full_state_data = zeros(Float64, length(x), mode["n_ensemble"], length(t))
-        full_state_data[:, :, 1] = X[1:end-1, :]
-
-        A_ = cat(A_old, zeros(size(A_old, 1)), dims=2)
-        A_end = cat(zeros(1, size(A_old, 2)), 1, dims=2)
-        A = cat(A_, A_end, dims=1)
-
-        B_ = cat(B_old, zeros(size(B_old, 1)), dims=2)
-        B_end = cat(zeros(1, size(B_old, 2)), 1, dims=2)
-        B = cat(B_, B_end, dims=1)
-
-        B[1, end] = 1
-        B[end, end] = mode["alpha"]
-    else
-        X = zeros(Float64, length(x) + 1)
-        X = initialize(s)[1]
-        X = reshape(X, length(X), 1)
-
-        full_state_data = zeros(Float64, length(x), length(t))
-        full_state_data[:, 1] = X
-
-        A = A_old
-        B = B_old
-    end
+    A, B, full_state_data, X = construct_system(x, s, mode)
 
     A_inv = inv(A)
 
@@ -136,22 +107,7 @@ function simulate_ENKF(mode)
         H[j, ilocs[i]] = 1.0
     end
 
-    if ~mode["run twin experiment"]
-        println("Running with real data")
-        observed_data = load_observations(s)
-        observed_data = observed_data[mode["location_used"], :]
-        observed_data = observed_data[:, 2:end]
-
-        println(size(observed_data))
-    else
-        observed_data = load("twin_0.2.jld", "Twin Data")
-        if ndims(observed_data) == 3
-            # If the twin eperiment is run with ensembles use the mean and collapse dimenions
-            observed_data = reshape(mean(observed_data, dims=2), (size(observed_data, 1), size(observed_data, 3)))
-        else
-            observed_data = observed_data[mode["location_used"], :]
-        end
-    end
+    observed_data = load_observations(s, mode)
 
     for i = 1:nt
         u[1] = s["h_left"][i]

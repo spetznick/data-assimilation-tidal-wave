@@ -1,3 +1,60 @@
+@enum ObservationData begin
+    tide = 1
+    waterlevel = 2
+    twinexperiment = 3
+    no_observation = 0
+end
+
+struct MissingModeKeyException <: Exception
+    key::String
+end
+
+struct TwinExperimentWithEnsemblesException <: Exception
+    key::String
+end
+
+function construct_system(x, settings, mode)
+    # Construct the system matrices A and B
+    #Load relevant kram
+    names = settings["names"]
+    names = names[mode["location_used"]]
+    t = settings["t"]
+    A_old = settings["A"]
+    B_old = settings["B"]
+
+    if mode["use_ensembles"]
+        X = zeros(Float64, length(x) + 1, mode["n_ensemble"])
+        for n in mode["n_ensemble"]
+            X[:, n] = vcat(initialize(s)[1], [0]) # N(0) = 0
+        end
+        full_state_data = zeros(Float64, length(x), mode["n_ensemble"], length(t))
+        full_state_data[:, :, 1] = X[1:end-1, :]
+
+        A_ = cat(A_old, zeros(size(A_old, 1)), dims=2)
+        A_end = cat(zeros(1, size(A_old, 2)), 1, dims=2)
+        A = cat(A_, A_end, dims=1)
+
+        B_ = cat(B_old, zeros(size(B_old, 1)), dims=2)
+        B_end = cat(zeros(1, size(B_old, 2)), 1, dims=2)
+        B = cat(B_, B_end, dims=1)
+
+        B[1, end] = 1
+        B[end, end] = mode["alpha"]
+    else
+        X = zeros(Float64, length(x) + 1)
+        X = initialize(s)[1]
+        X = reshape(X, length(X), 1)
+
+        full_state_data = zeros(Float64, length(x), length(t))
+        full_state_data[:, 1] = X
+
+        A = A_old
+        B = B_old
+    end
+    # Initialize the full state data and the ensemble matrix X
+    return A, B, full_state_data, X
+end
+
 #About getting started
 function read_series(filename::String)
     infile = open(filename)
@@ -144,25 +201,56 @@ function initialize(s) #return (x,t) at initial time
     return (x, t[1])
 end
 
-function load_observations(settings)
-    ilocs = settings["ilocs"]
-    #load observations
-    (obs_times, obs_values) = read_series("tide_cadzand.txt")
-    observed_data = zeros(Float64, length(ilocs), length(obs_times))
-    observed_data[1, :] = obs_values[:]
-    (obs_times, obs_values) = read_series("tide_vlissingen.txt")
-    observed_data[2, :] = obs_values[:]
-    (obs_times, obs_values) = read_series("tide_terneuzen.txt")
-    observed_data[3, :] = obs_values[:]
-    (obs_times, obs_values) = read_series("tide_hansweert.txt")
-    observed_data[4, :] = obs_values[:]
-    (obs_times, obs_values) = read_series("tide_bath.txt")
-    observed_data[5, :] = obs_values[:]
-
+function load_observations(settings, mode)
+    # "with_observation_data" => no_observation,
+    # "observation_file" => "groundtruth_0.2.jld",
+    if mode["with_observation_data"] == tide
+        ilocs = settings["ilocs"]
+        #load observations
+        (obs_times, obs_values) = read_series("tide_cadzand.txt")
+        observed_data = zeros(Float64, length(ilocs), length(obs_times))
+        observed_data[1, :] = obs_values[:]
+        (obs_times, obs_values) = read_series("tide_vlissingen.txt")
+        observed_data[2, :] = obs_values[:]
+        (obs_times, obs_values) = read_series("tide_terneuzen.txt")
+        observed_data[3, :] = obs_values[:]
+        (obs_times, obs_values) = read_series("tide_hansweert.txt")
+        observed_data[4, :] = obs_values[:]
+        (obs_times, obs_values) = read_series("tide_bath.txt")
+        observed_data[5, :] = obs_values[:]
+        observed_data = observed_data[mode["location_used"], :]
+        observed_data = observed_data[:, 2:end]
+    elseif mode["with_observation_data"] == waterlevel
+        ilocs = settings["ilocs"]
+        # Cadzand not available -> no data in first row
+        (obs_times, obs_values) = read_series("waterlevel_vlissingen.txt")
+        observed_data = zeros(Float64, length(ilocs), length(obs_times))
+        observed_data[2, :] = obs_values[:]
+        (obs_times, obs_values) = read_series("waterlevel_terneuzen.txt")
+        observed_data[3, :] = obs_values[:]
+        (obs_times, obs_values) = read_series("waterlevel_hansweert.txt")
+        observed_data[4, :] = obs_values[:]
+        (obs_times, obs_values) = read_series("waterlevel_bath.txt")
+        observed_data[5, :] = obs_values[:]
+        observed_data = observed_data[mode["location_used"], :]
+        observed_data = observed_data[:, 2:end]
+    elseif mode["with_observation_data"] == twinexperiment
+        observed_data = load(mode["observation_file"], "Twin Data")
+        if ndims(observed_data) == 3
+            # If the twin eperiment is run with ensembles use the mean and collapse dimenions
+            throw(TwinExperimentWithEnsemblesException("The twin experiment was probably run with ensembles. Set 'use_ensembles' in mode dict to false."))
+        else
+            observed_data = observed_data[s["ilocs"][mode["location_used"]], :]
+        end
+    elseif mode["with_observation_data"] == no_observation
+        observed_data = nothing
+    else
+        throw(MissingModeKeyException("It seems like 'mode' is missing a value for 'with_observation_data'"))
+    end
     return observed_data
 end
 
-#About plotting
+# About plotting
 function plot_state(x, i, s; cov_data, enkf=false)
     # println("plotting a map.")
     if enkf
@@ -205,13 +293,13 @@ end
 function plot_state_for_gif(x, cov_data, s, observed_data, time, mode)
     #plot all waterlevels and velocities at one time
     #prepare observed data for plotting
-    
+
     ilocs = s["ilocs"][mode["location_used"]]
     observed_data = observed_data[:, :]
 
     xh = 0.001 * s["x_h"]
     xu = 0.001 * s["x_u"]
-    
+
     p1 = plot()
     p2 = plot()
     p1 = scatter!(p1, ilocs / 2, observed_data[:, time+1], legend=true, ylims=(-3.0, 5.0), color=:red, markersize=2, label="measurment data")
@@ -300,6 +388,8 @@ end
 
 function build_latex_table_bias_rmse(biases, rmses, mode, names)
     df = DataFrame(Locations=names, biases=biases, rmses=rmses)
+    df[!, :biases] = round.(df[!, :biases]; digits=3)
+    df[!, :rmses] = round.(df[!, :rmses]; digits=3)
     table = latexify(df, env=:table)
     if mode["use_ensembles"]
         enkf_suffix = "_ENKF"

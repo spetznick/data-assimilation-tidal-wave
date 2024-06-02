@@ -34,6 +34,8 @@ hours_to_seconds = 60.0 * 60.0
 days_to_seconds = 24.0 * 60.0 * 60.0
 seconds_to_hours = 1.0 / hours_to_seconds
 
+include("function_file.jl")
+
 wavelengths = []
 
 function read_series(filename::String)
@@ -258,10 +260,11 @@ function simulate()
     index_start = 62 # start at second rising tide
     biases = zeros(Float64, length(names))
     rmses = zeros(Float64, length(names))
-    biases = bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end]) # ignore first data points due to dynamic behaviour in the beginning
-    rmses = rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end]) # ignore first data points due to dynamic behaviour in the beginning
+    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    biases = bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], names) # ignore first data points due to dynamic behaviour in the beginning
+    rmses = rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], names) # ignore first data points due to dynamic behaviour in the beginning
     if build_latex_tables
-        build_latex_table_bias_rmse(biases, rmses)
+        build_latex_table_bias_rmse(biases, rmses, {"use_ensembles" => false}, names)
     end
     println("All figures have been saved to files.")
     if plot_maps
@@ -273,40 +276,6 @@ function simulate()
 
     println("Wave speed: $(compute_wave_propagation_speed(series_data, s))")
     # return wavelengths, series_data
-end
-
-function bias_at_locations(data1, data2)
-    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
-    biases = zeros(Float64, length(names))
-    nseries = length(names)
-    for i = 1:nseries
-        biases[i] = compute_bias(data1[i, :], data2[i, :], names[i])
-    end
-    return biases
-end
-
-function rmse_at_locations(data1, data2)
-    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
-    nseries = length(names)
-    rmses = zeros(Float64, length(names))
-    for i = 1:nseries
-        rmses[i] = compute_rmse(data1[i, :], data2[i, :], names[i])
-    end
-    return rmses
-end
-
-function compute_bias(data1, data2, label)
-    residual = data1 - data2[2:end, :]
-    bias = Statistics.std(residual)
-    # println("Bias at $(label): $(bias)")
-    return bias
-end
-
-function compute_rmse(data1, data2, label)
-    residual = data1 - data2[2:end, :]
-    rmse = 1 / length(residual) * sqrt(sum(residual .^ 2))
-    # println("RMSE at $(label): $(rmse)")
-    return rmse
 end
 
 function compute_local_max_indices(x)
@@ -334,13 +303,13 @@ function compute_wave_propagation_speed(series_data, s::Dict)
 end
 
 
-function build_latex_table_bias_rmse(biases, rmses)
-    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
-    df = DataFrame(Locations=names, biases=biases, rmses=rmses)
-    table = latexify(df, env=:table)
-    open("tables/q3_bias_rmse_table.txt", "w") do io
-        println(io, table)
-    end
-end
+# function build_latex_table_bias_rmse(biases, rmses)
+#     names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+#     df = DataFrame(Locations=names, biases=biases, rmses=rmses)
+#     table = latexify(df, env=:table)
+#     open("tables/q3_bias_rmse_table.txt", "w") do io
+#         println(io, table)
+#     end
+# end
 
 simulate()
