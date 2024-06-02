@@ -25,7 +25,7 @@ function construct_system(x, settings, mode)
     if mode["use_ensembles"]
         X = zeros(Float64, length(x) + 1, mode["n_ensemble"])
         for n in mode["n_ensemble"]
-            X[:, n] = vcat(initialize(s)[1], [0]) # N(0) = 0
+            X[:, n] = vcat(initialize!(s)[1], [0]) # N(0) = 0
         end
         full_state_data = zeros(Float64, length(x), mode["n_ensemble"], length(t))
         full_state_data[:, :, 1] = X[1:end-1, :]
@@ -42,7 +42,7 @@ function construct_system(x, settings, mode)
         B[end, end] = mode["alpha"]
     else
         X = zeros(Float64, length(x) + 1)
-        X = initialize(settings)[1]
+        X = initialize!(settings)[1]
         X = reshape(X, length(X), 1)
 
         full_state_data = zeros(Float64, length(x), length(t))
@@ -73,7 +73,7 @@ function read_series(filename::String)
     return (times, values)
 end
 
-function settings()
+function create_settings()
     s = Dict() #hashmap to  use s['g'] as s.g in matlab
     # Constants
     s["g"] = 9.81 # acceleration of gravity
@@ -115,7 +115,7 @@ function settings()
     return s
 end
 
-function initialize(s) #return (x,t) at initial time
+function initialize!(s) #return (x,t) at initial time
     #compute initial fields and cache some things for speed
     h_0 = s["h_0"]
     u_0 = s["u_0"]
@@ -254,7 +254,7 @@ end
 function plot_state(x, i, s; cov_data, enkf=false)
     # println("plotting a map.")
     if enkf
-        enkf_suffix = "_ENKF"
+        enkf_suffix = "_enkf"
     else
         enkf_suffix = ""
     end
@@ -268,12 +268,12 @@ function plot_state(x, i, s; cov_data, enkf=false)
     sleep(0.05)
 end
 
-function plot_series(t, series_data, s, obs_data, loc_names, mode)
-
+function plot_series(t, series_data, obs_data, loc_names, mode)
+    println("Plot at locations.")
     println(loc_names)
     nseries = length(loc_names)
     if mode["use_ensembles"]
-        enkf_suffix = "_ENKF"
+        enkf_suffix = "_enkf"
     else
         enkf_suffix = ""
     end
