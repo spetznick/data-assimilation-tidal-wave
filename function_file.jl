@@ -343,6 +343,37 @@ function plot_state_for_gif(x, cov_data, settings, observed_data, time, mode)
     return p
 end
 
+function mean_error_meas_obs(X, observed_data, settings, mode)# lasse es erstmal so, nimmt den fulls state
+    # Calculate the mean across the third dimension
+    mean_X = mean(X, dims=2)
+    
+    # Select the relevant locations based on the mode and settings
+    mean_X_selected = mean_X[settings["ilocs"][mode["location_used"]], :, :]
+    
+    # Reshape the mean_X_selected to a 2D array of size (4, 288)
+    mean_X_selected = reshape(mean_X_selected, 4, 288)
+    
+    # Calculate the error between the selected mean and observed data
+    error = mean_X_selected .- observed_data
+    
+    # Compute the mean error across the first dimension
+    mean_error = mean(error, dims=1)
+
+    # Create a helper array with zeros for plotting the ribbon
+    helper = zeros(Float64, length(mean_X_selected[1, :]))
+    
+    # Plot the mean error
+    p1 = plot(mean_error[:], 
+              xlabel="Time", ylabel="Mean Error", label="mean error", ylim=[-0.25, 0.25], legend=:topleft)
+    
+    # Add the ribbon plot
+    plot!(p1, helper, ribbon=[0.1, -0.1], color="black", fillalpha=0.5, label="Tolerance Range")
+    savefig(p1, "figures/mean_error_meas_obs.png")
+    # Display the plot
+    display(p1)
+end
+
+
 #About Statistics
 function bias_at_locations(data1, data2, names)
     println("Computing bias at locations.")
