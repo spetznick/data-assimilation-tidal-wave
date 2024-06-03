@@ -106,7 +106,7 @@ function build_measurement_matrix(settings, mode)
 end
 
 
-function simulate_enkf(settings, mode)
+function simulate_enkf(settings, mode, counter_for_prediction=0)
     names = settings["names"]
     names = names[mode["location_used"]]
     t = settings["t"]
@@ -122,7 +122,13 @@ function simulate_enkf(settings, mode)
     observed_data = load_observations(settings, mode)
 
     nt = length(t)
+
     for i = 1:nt
+        #check whether we want to forecast or not
+        if  nt - counter_for_prediction < i
+            mode["use_Kalman"] = false
+            mode["assimilate_left_bc"] = use_cadzand
+        end
         # if we assimilate all
         if mode["assimilate_left_bc"] == use_cadzand
             u[1] = settings["h_left"][i]
@@ -285,20 +291,20 @@ function run_simulation_and_create_synthetic_data()
     println("gif saved at $(mode["gif_filename"])")
 end
 
-function run_ensemble_enkf_in_storm()
+function run_ensemble_enkf_in_storm(counter_for_prediction=0)
     mode["create_data"] = false
     mode["use_ensembles"] = true
     mode["use_Kalman"] = true
     mode["with_observation_data"] = waterlevel
     mode["gif_filename"] = "enkf_in_storm"
     mode["assimilate_left_bc"] = keep_ensembles_apart
-
+    #counter_for_prediction = counter_for_prediction * 6
     settings = create_settings()
     _ = initialize!(settings)
 
-    full_state_data, observed_data, cov_data = simulate_enkf(settings, mode)
+    full_state_data, observed_data, cov_data = simulate_enkf(settings, mode, counter_for_prediction)
     series_data = collapse_full_state_data(full_state_data, mode)
-    plot_series_with_name(series_data, observed_data, settings, mode, "enkf_in_storm")
+    plot_series_with_name(series_data, observed_data, settings, mode, "enkf_in_storm", counter_for_prediction)
 
     anim = @animate for i ∈ 1:(length(s["t"])-1)
         plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
@@ -306,7 +312,33 @@ function run_ensemble_enkf_in_storm()
 
     gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
     println("gif saved at $(mode["gif_filename"])")
+    return full_state_data, observed_data
 end
 
-run_ensemble_enkf_in_storm()
+function comparison_prediciton_noKalman(counter_for_prediction=0)
+    mode["create_data"] = false
+    mode["use_ensembles"] = true
+    mode["use_Kalman"] = false
+    mode["with_observation_data"] = waterlevel
+    mode["gif_filename"] = "no_enkf_in_storm"
+    mode["assimilate_left_bc"] = use_cadzand #keep_ensembles_apart
+    #counter_for_prediction = counter_for_prediction * 6
+    settings = create_settings()
+    _ = initialize!(settings)
+
+    full_state_data, observed_data, cov_data = simulate_enkf(settings, mode, counter_for_prediction)
+    series_data = collapse_full_state_data(full_state_data, mode)
+    plot_series_with_name(series_data, observed_data, settings, mode, "enkf_in_storm", counter_for_prediction)
+
+    anim = @animate for i ∈ 1:(length(s["t"])-1)
+        plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
+    end
+
+    gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
+    println("gif saved at $(mode["gif_filename"])")
+    return full_state_data, observed_data
+end
+
+
+run_ensemble_enkf_in_storm(80)
 

@@ -298,25 +298,38 @@ function plot_series(t, series_data, obs_data, loc_names, mode)
     end
 end
 
-function plot_series_with_name(series_data, obs_data, settings, mode, name)
+function plot_series_with_name(series_data, obs_data, settings, mode, name, x_value = 0.0)
     println("Plot at locations.")
 
     t = settings["t"]
     ilocs = settings["ilocs"][mode["location_used"]]
     loc_names = settings["loc_names"][mode["location_used"]]
+    loc_names = replace.(loc_names, "Waterlevel at " => "")
 
-    println(loc_names)
+
     nseries = length(loc_names)
     series_data = series_data[ilocs, :]
+    ntimes = min(length(t), size(obs_data, 2))
+    plots = []
     for i = 1:nseries
-        p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, label=["model"])
-        ntimes = min(length(t), size(obs_data, 2))
-        plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label=["model", "measured"])
+        p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, ylabel="Waterlevel [m]", label="")
+        
+        plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label="")
+        if x_value != 0.0
+            vline!(p, [(length(t)-x_value)/60*10], linecolor=:red, legend =false)  # add a vertical line at x_value
+        end
         title!(p, loc_names[i])
         xlabel!(p, "time [hours]")
-        savefig(p, replace("figures/$(name) $(loc_names[i]).png", " " => "_"))
-        sleep(0.05) #Slow down to avoid that that the plotting backend starts complaining. This is a bug and should be fixed soon.
+        push!(plots, p)
+        sleep(0.05) # Slow down to avoid that the plotting backend starts complaining. This is a bug and should be fixed soon.
     end
+    
+    # Create a separate legend plot
+    legend_plot = plot(legend=true)
+    plot!(legend_plot, [NaN, NaN], linecolor=[:blue, :black], label=["model", "measured"])
+    
+    p_combined = plot(plots..., layout=(2, 2))
+    savefig(p_combined, replace("figures/$(name).png", " " => "_"))
 end
 
 
