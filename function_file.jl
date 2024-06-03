@@ -298,6 +298,28 @@ function plot_series(t, series_data, obs_data, loc_names, mode)
     end
 end
 
+function plot_series_with_name(series_data, obs_data, settings, mode, name)
+    println("Plot at locations.")
+
+    t = settings["t"]
+    ilocs = settings["ilocs"][mode["location_used"]]
+    loc_names = settings["loc_names"][mode["location_used"]]
+
+    println(loc_names)
+    nseries = length(loc_names)
+    series_data = series_data[ilocs, :]
+    for i = 1:nseries
+        p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, label=["model"])
+        ntimes = min(length(t), size(obs_data, 2))
+        plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label=["model", "measured"])
+        title!(p, loc_names[i])
+        xlabel!(p, "time [hours]")
+        savefig(p, replace("figures/$(name) $(loc_names[i]).png", " " => "_"))
+        sleep(0.05) #Slow down to avoid that that the plotting backend starts complaining. This is a bug and should be fixed soon.
+    end
+end
+
+
 function plot_state_for_gif(x, cov_data, settings, observed_data, time, mode)
     #plot all waterlevels and velocities at one time
     #prepare observed data for plotting

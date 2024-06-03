@@ -178,44 +178,13 @@ function collapse_full_state_data(full_state_data, mode; indices_like_ilocs=noth
     end
 
     series_data = zeros(Float64, size(full_state_data, 1), size(full_state_data, 3))
-
-    series_data = mean(full_state_data, dims=2)
+    println(size(series_data))
+    println(size(mean(full_state_data, dims=2)[:, 1, :]))
+    series_data = mean(full_state_data, dims=2)[:, 1, :]
 
     return series_data[indices_like_ilocs, :]
 end
 
-
-function run_experiment()
-    settings = create_settings()
-    _ = initialize!(settings)
-    t = settings["t"]
-    names = settings["names"][mode["location_used"]]
-
-    full_state_data, observed_data, cov_data = simulate_enkf(settings, mode)
-
-    series_data = collapse_full_state_data(full_state_data, mode; indices_like_ilocs=settings["ilocs"][mode["location_used"]])
-
-    plot_series(t, series_data, observed_data, names, mode)
-
-    # compute_statistics(series_data, observed_data, names, mode, 225) #die letzten 225 punkte werden für die statistik verwendet
-
-    if mode["create_data"]
-        println("synthetic experiment, save data", size(full_state_data))
-        title = "synthetic_$(mode["system_noise"]).jld"
-        save(title, "synthetic data", full_state_data)
-    end
-
-    anim = @animate for i ∈ 1:(length(s["t"])-1)
-        if mode["use_ensembles"]
-            plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
-        else
-            plot_state_for_gif(full_state_data[:, i], cov_data, settings, observed_data, i, mode)
-        end
-    end
-
-    gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
-    println("gif saved at $(mode["gif_filename"])")
-end
 
 function run_synthetic_versus_ensemble_enkf()
     mode["create_data"] = false
@@ -223,7 +192,7 @@ function run_synthetic_versus_ensemble_enkf()
     mode["use_Kalman"] = true
     mode["with_observation_data"] = synthetic
     mode["observation_file"] = "synthetic_0.2.jld"
-    mode["gif_filename"] = "fig_map_enkf_versus_synthetic"
+    mode["gif_filename"] = "enkf_versus_synthetic_use_cadzand"
     mode["assimilate_left_bc"] = use_cadzand
 
     settings = create_settings()
@@ -231,8 +200,11 @@ function run_synthetic_versus_ensemble_enkf()
 
     full_state_data, observed_data, cov_data = simulate_enkf(settings, mode)
 
+    series_data = collapse_full_state_data(full_state_data, mode)
+    plot_series_with_name(series_data, observed_data, settings, mode, "enkf_versus_synthetic_use_cadzand")
+
     anim = @animate for i ∈ 1:(length(s["t"])-1)
-        plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
+        plot_state_for_gif(series_data[:, i], cov_data, settings, observed_data, i, mode)
     end
 
     gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
@@ -245,13 +217,15 @@ function run_synthetic_versus_ensemble_enkf_nobc_info()
     mode["use_Kalman"] = true
     mode["with_observation_data"] = synthetic
     mode["observation_file"] = "synthetic_0.2.jld"
-    mode["gif_filename"] = "fig_map_enkf_versus_synthetic_nobcinfo"
+    mode["gif_filename"] = "enkf_versus_synthetic_nobc_use_zero"
     mode["assimilate_left_bc"] = use_zero
 
     settings = create_settings()
     _ = initialize!(settings)
 
     full_state_data, observed_data, cov_data = simulate_enkf(settings, mode)
+    series_data = collapse_full_state_data(full_state_data, mode)
+    plot_series_with_name(series_data, observed_data, settings, mode, "enkf_versus_synthetic_nobc_use_zero")
 
     anim = @animate for i ∈ 1:(length(s["t"])-1)
         plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
@@ -267,7 +241,8 @@ function run_synthetic_versus_ensemble_nokf()
     mode["use_Kalman"] = false
     mode["with_observation_data"] = synthetic
     mode["observation_file"] = "synthetic_0.2.jld"
-    mode["gif_filename"] = "fig_map_ensemble_versus_synthetic"
+    mode["gif_filename"] = "fig_map_ensemble_versus_synthetic_nobcinfo_0_keep"
+    mode["assimilate_left_bc"] = keep_ensembles_apart
 
     settings = create_settings()
     _ = initialize!(settings)
@@ -310,5 +285,28 @@ function run_simulation_and_create_synthetic_data()
     println("gif saved at $(mode["gif_filename"])")
 end
 
-run_synthetic_versus_ensemble_enkf_nobc_info()
+function run_ensemble_enkf_in_storm()
+    mode["create_data"] = false
+    mode["use_ensembles"] = true
+    mode["use_Kalman"] = true
+    mode["with_observation_data"] = waterlevel
+    mode["gif_filename"] = "enkf_in_storm"
+    mode["assimilate_left_bc"] = keep_ensembles_apart
+
+    settings = create_settings()
+    _ = initialize!(settings)
+
+    full_state_data, observed_data, cov_data = simulate_enkf(settings, mode)
+    series_data = collapse_full_state_data(full_state_data, mode)
+    plot_series_with_name(series_data, observed_data, settings, mode, "enkf_in_storm")
+
+    anim = @animate for i ∈ 1:(length(s["t"])-1)
+        plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
+    end
+
+    gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
+    println("gif saved at $(mode["gif_filename"])")
+end
+
+run_ensemble_enkf_in_storm()
 
