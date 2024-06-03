@@ -184,8 +184,7 @@ function collapse_full_state_data(full_state_data, mode; indices_like_ilocs=noth
     end
 
     series_data = zeros(Float64, size(full_state_data, 1), size(full_state_data, 3))
-    println(size(series_data))
-    println(size(mean(full_state_data, dims=2)[:, 1, :]))
+
     series_data = mean(full_state_data, dims=2)[:, 1, :]
 
     return series_data[indices_like_ilocs, :]
@@ -298,22 +297,31 @@ function run_ensemble_enkf_in_storm(counter_for_prediction=0)
     mode["with_observation_data"] = waterlevel
     mode["gif_filename"] = "enkf_in_storm"
     mode["assimilate_left_bc"] = keep_ensembles_apart
-    #counter_for_prediction = counter_for_prediction * 6
     settings = create_settings()
     _ = initialize!(settings)
 
+    if counter_for_prediction != 0
+        add = "_$((288-counter_for_prediction)*10/60)_h"
+    else
+        add = ""
+    end
+
     full_state_data, observed_data, cov_data = simulate_enkf(settings, mode, counter_for_prediction)
     series_data = collapse_full_state_data(full_state_data, mode)
-    plot_series_with_name(series_data, observed_data, settings, mode, "enkf_in_storm", counter_for_prediction)
+    plot_series_with_name(series_data, observed_data, settings, mode, "enkf_in_storm$(add)", counter_for_prediction)
 
-    anim = @animate for i ∈ 1:(length(s["t"])-1)
+    mean = collapse_full_state_data(full_state_data, mode)
+    mean_error = mean_squared_error(mean, observed_data)
+
+    """anim = @animate for i ∈ 1:(length(s["t"])-1)
         plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
     end
 
     gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
-    println("gif saved at $(mode["gif_filename"])")
-    return full_state_data, observed_data
+    println("gif saved at $(mode["gif_filename"])")"""
+    return full_state_data, observed_data, mean_error
 end
+
 
 function comparison_prediciton_noKalman(counter_for_prediction=0)
     mode["create_data"] = false
@@ -322,23 +330,44 @@ function comparison_prediciton_noKalman(counter_for_prediction=0)
     mode["with_observation_data"] = waterlevel
     mode["gif_filename"] = "no_enkf_in_storm"
     mode["assimilate_left_bc"] = use_cadzand #keep_ensembles_apart
-    #counter_for_prediction = counter_for_prediction * 6
     settings = create_settings()
     _ = initialize!(settings)
 
+    if counter_for_prediction != 0
+        add = "_$((288-counter_for_prediction)*10/60)_h"
+    else
+        add = ""
+    end
     full_state_data, observed_data, cov_data = simulate_enkf(settings, mode, counter_for_prediction)
     series_data = collapse_full_state_data(full_state_data, mode)
-    plot_series_with_name(series_data, observed_data, settings, mode, "enkf_in_storm", counter_for_prediction)
-
-    anim = @animate for i ∈ 1:(length(s["t"])-1)
+    plot_series_with_name(series_data, observed_data, settings, mode, "no enkf_in_storm$(add)", counter_for_prediction)
+    
+    mean = collapse_full_state_data(full_state_data, mode)
+    mean_error = mean_squared_error(mean, observed_data)
+    
+    """anim = @animate for i ∈ 1:(length(s["t"])-1)
         plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
     end
 
     gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
-    println("gif saved at $(mode["gif_filename"])")
-    return full_state_data, observed_data
+    println("gif saved at $(mode["gif_filename"])")"""
+    return full_state_data, observed_data, mean_error
 end
 
 
-run_ensemble_enkf_in_storm(80)
 
+en = [120, 123, 126, 129, 132, 135, 138] #entspricht ab stunde 35, sieht dann nice aus Gute werte für den peak sind 120, 123, 126, 129, 132, 135, 138 entspricht ab stunde 20, 30 min schritte
+error_ENKF = zeros(Float64, length(en))
+error_NoENKF = zeros(Float64, length(en))
+for n in en
+    state_data_Strom_ENKF, observed_data_Strom_ENKF, error_ENKF_ = run_ensemble_enkf_in_storm(n)
+    comparison_data_storm_noENKF, _, error_NoENKF_ = comparison_prediciton_noKalman(n)
+    error_ENKF[n] = error_ENKF_
+    error_NoENKF[n] = error_NoENKF_
+
+    compare_forecasting(state_data_Strom_ENKF, comparison_data_storm_noENKF, observed_data_Strom_ENKF, s, mode, "comparison_forecasting_$((288-n)*10/60)_h", n)
+end
+
+
+##########################
+## Hier noch ne func die den error in einem plot plotted

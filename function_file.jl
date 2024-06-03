@@ -69,7 +69,6 @@ function read_series(filename::String)
     times = DateTime[]
     values = Float64[]
     for line in eachline(infile)
-        #println(line)
         if Base.startswith(line, "#") || length(line) <= 1
             continue
         end
@@ -106,7 +105,6 @@ function create_settings()
     dt = 10.0 * minutes_to_seconds
     s["dt"] = dt
     reftime = DateTime("201312050000", "yyyymmddHHMM") #times in secs relative
-    println(reftime)
     s["reftime"] = reftime
     t = collect(dt * (1:round(t_f / dt))) #expand to numbers with collect
     s["t"] = t
@@ -260,7 +258,6 @@ end
 
 # About plotting
 function plot_state(x, i, settings; cov_data, enkf=false)
-    # println("plotting a map.")
     if enkf
         enkf_suffix = "_enkf"
     else
@@ -277,8 +274,7 @@ function plot_state(x, i, settings; cov_data, enkf=false)
 end
 
 function plot_series(t, series_data, obs_data, loc_names, mode)
-    println("Plot at locations.")
-    println(loc_names)
+
     nseries = length(loc_names)
     if mode["use_ensembles"]
         enkf_suffix = "_enkf"
@@ -298,8 +294,44 @@ function plot_series(t, series_data, obs_data, loc_names, mode)
     end
 end
 
+function compare_forecasting(forecasting_1, forecasting_2, obs_data, settings, mode, name, x_value = 0.0)
+    forecasting_1 = collapse_full_state_data(forecasting_1, mode)
+    forecasting_2 = collapse_full_state_data(forecasting_2, mode)
+    println("Plot at locations.",name)
+
+    t = settings["t"]
+    ilocs = settings["ilocs"][mode["location_used"]]
+    loc_names = settings["loc_names"][mode["location_used"]]
+    loc_names = replace.(loc_names, "Waterlevel at " => "")
+
+
+    nseries = length(loc_names)
+    forecasting_1 = forecasting_1[ilocs, :]
+    forecasting_2 = forecasting_2[ilocs, :]
+    ntimes = min(length(t), size(obs_data, 2))
+    x_min = x_value
+    x_max = (x_value - 20) #20 = 20*10 min = 
+    
+    t = t[end-x_value : end-x_max]
+    plots = []
+    for i = 1:nseries
+        p = plot(seconds_to_hours .* t, forecasting_1[i, end-x_min:end-x_max],label="ENKF", linecolor=:blue, ylabel="Waterlevel [m]", legend=:bottomright)
+        plot!(p, seconds_to_hours .* t[1:end], forecasting_2[i, end-x_min:end-x_max],label="no ENKF", linecolor=:green)
+        plot!(p, seconds_to_hours .* t[1:end], obs_data[i, end-x_min:end-x_max],label= "Observations", linecolor=:black,)
+
+        title!(p, loc_names[i])
+        xlabel!(p, "time [hours]")
+        push!(plots, p)
+        sleep(0.05) # Slow down to avoid that the plotting backend starts complaining. This is a bug and should be fixed soon.
+    end
+    
+    p_combined = plot(plots..., layout=(2, 2))
+    savefig(p_combined, replace("figures/$(name).png", " " => "_"))
+end
+
+
 function plot_series_with_name(series_data, obs_data, settings, mode, name, x_value = 0.0)
-    println("Plot at locations.")
+    println("Plot at locations.",name)
 
     t = settings["t"]
     ilocs = settings["ilocs"][mode["location_used"]]
@@ -389,11 +421,9 @@ end
 
 #About Statistics
 function bias_at_locations(data1, data2, names)
-    println("Computing bias at locations.")
+    println("Computing bias at locations:", names)
     biases = zeros(Float64, length(names))
     nseries = length(names)
-
-    println("nseries: $(nseries)")
     for i = 1:nseries
         biases[i] = compute_bias(data1[i, :], data2[i, :])
     end
@@ -401,11 +431,9 @@ function bias_at_locations(data1, data2, names)
 end
 
 function bias_at_locations(data1, data2, names)
-    println("Computing bias at locations.")
+    println("Computing bias at locations.",names)
     biases = zeros(Float64, length(names))
     nseries = length(names)
-
-    println("nseries: $(nseries)")
     for i = 1:nseries
         biases[i] = compute_bias(data1[i, :], data2[i, :])
     end
