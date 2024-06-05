@@ -290,13 +290,13 @@ function run_simulation_and_create_synthetic_data()
     println("gif saved at $(mode["gif_filename"])")
 end
 
-function run_ensemble_enkf_in_storm(counter_for_prediction=0)
+function run_ensemble_enkf_in_storm(counter_for_prediction=0, gif = false)
     mode["create_data"] = false
     mode["use_ensembles"] = true
     mode["use_Kalman"] = true
     mode["with_observation_data"] = waterlevel
     mode["gif_filename"] = "enkf_in_storm"
-    mode["assimilate_left_bc"] = keep_ensembles_apart
+    mode["assimilate_left_bc"] = use_cadzand# keep_ensembles_apart
     settings = create_settings()
     _ = initialize!(settings)
 
@@ -312,18 +312,19 @@ function run_ensemble_enkf_in_storm(counter_for_prediction=0)
 
     mean = collapse_full_state_data(full_state_data, mode)
     mean_error = 0#mean_squared_error(mean, observed_data)
+    if gif
+        anim = @animate for i ∈ 1:(length(s["t"])-1)
+            plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
+        end
 
-    anim = @animate for i ∈ 1:(length(s["t"])-1)
-        plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
+        gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
+        println("gif saved at $(mode["gif_filename"])")
     end
-
-    gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
-    println("gif saved at $(mode["gif_filename"])")
     return full_state_data, observed_data, mean_error
 end
 
 
-function comparison_prediciton_noKalman(counter_for_prediction=0)
+function comparison_prediciton_noKalman(counter_for_prediction=0, gif = false)
     mode["create_data"] = false
     mode["use_ensembles"] = true
     mode["use_Kalman"] = false
@@ -344,19 +345,20 @@ function comparison_prediciton_noKalman(counter_for_prediction=0)
     
     mean = collapse_full_state_data(full_state_data, mode)
     mean_error = 0#mean_squared_error(mean, observed_data)
-    
-    anim = @animate for i ∈ 1:(length(s["t"])-1)
-        plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
-    end
+    if gif
+        anim = @animate for i ∈ 1:(length(s["t"])-1)
+            plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
+        end
 
-    gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
-    println("gif saved at $(mode["gif_filename"])")
+        gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
+        println("gif saved at $(mode["gif_filename"])")
+    end
     return full_state_data, observed_data, mean_error
 end
 
 
 
-en = [120]#, 123, 126, 129, 132, 135, 138] #entspricht ab stunde 35, sieht dann nice aus Gute werte für den peak sind 120, 123, 126, 129, 132, 135, 138 entspricht ab stunde 20, 30 min schritte
+en = [120, 123, 126, 129, 132, 135, 138, 144, 150] #120 entsprich ab stunde 28 haben wir keinen assimilation mehr. danach entsprechen 3 weitere zeitschritte, dass wir weitere 30 min vorher keine ass mehr haben.
 error_ENKF = zeros(Float64, length(en))
 error_NoENKF = zeros(Float64, length(en))
 s = create_settings()

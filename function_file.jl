@@ -286,7 +286,7 @@ function plot_series(t, series_data, obs_data, loc_names, mode)
         # Variances are so small that they are not visible in the plot for subsequent plots
         p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, label=["model"])
         ntimes = min(length(t), size(obs_data, 2))
-        plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label=["model", "measured"])
+        plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label=["model", "measured"],dpi = 1000, foreground_color_legend = nothing, size = (800, 600))
         title!(p, loc_names[i])
         xlabel!(p, "time [hours]")
         savefig(p, replace("figures/$(loc_names[i])$(enkf_suffix).png", " " => "_"))
@@ -298,7 +298,8 @@ function compare_forecasting(forecasting_1, forecasting_2, obs_data, settings, m
     forecasting_1 = collapse_full_state_data(forecasting_1, mode)
     forecasting_2 = collapse_full_state_data(forecasting_2, mode)
     println("Plot at locations.",name)
-
+    s = create_settings()
+    _ = initialize!(settings)
     t = settings["t"]
     ilocs = settings["ilocs"][mode["location_used"]]
     loc_names = settings["loc_names"][mode["location_used"]]
@@ -310,12 +311,12 @@ function compare_forecasting(forecasting_1, forecasting_2, obs_data, settings, m
     forecasting_2 = forecasting_2[ilocs, :]
     ntimes = min(length(t), size(obs_data, 2))
     x_min = x_value
-    x_max = (x_value - 20) #20 = 20*10 min = 
+    x_max = (x_value - 60) #20 = 20*10 min = 
     
     t = t[end-x_value : end-x_max]
     plots = []
     for i = nseries - 3:nseries
-        p = plot(seconds_to_hours .* t, forecasting_1[i, end-x_min:end-x_max],label="ENKF", linecolor=:blue, ylabel="Waterlevel [m]", legend=:bottomright)
+        p = plot(seconds_to_hours .* t, forecasting_1[i, end-x_min:end-x_max],label="ENKF", linecolor=:blue, ylabel="Waterlevel [m]", legend=:bottomleft, dpi = 1000, foreground_color_legend = nothing, size = (800, 600))
         plot!(p, seconds_to_hours .* t[1:end], forecasting_2[i, end-x_min:end-x_max],label="no ENKF", linecolor=:green)
         plot!(p, seconds_to_hours .* t[1:end], obs_data[i, end-x_min:end-x_max],label= "Observations", linecolor=:black,)
 
@@ -344,11 +345,11 @@ function plot_series_with_name(series_data, obs_data, settings, mode, name, x_va
     ntimes = min(length(t), size(obs_data, 2))
     plots = []
     for i = nseries - 3:nseries
-        p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, ylabel="Waterlevel [m]", label="")
+        p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, ylabel="Waterlevel [m]", label=name,dpi = 1000, foreground_color_legend = nothing, size = (800, 600), legend=:topleft)
         
-        plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label="")
+        plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label="observations")
         if x_value != 0.0
-            vline!(p, [(length(t)-x_value)/60*10], linecolor=:red, legend =false)  # add a vertical line at x_value
+            vline!(p, [(length(t)-x_value)/60*10], linecolor=:red, legend=false, label="")  # add a vertical line at x_value
         end
         title!(p, loc_names[i])
         xlabel!(p, "time [hours]")
