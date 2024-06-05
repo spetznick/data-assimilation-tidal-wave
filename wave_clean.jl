@@ -290,7 +290,7 @@ function run_simulation_and_create_synthetic_data()
     println("gif saved at $(mode["gif_filename"])")
 end
 
-function run_ensemble_enkf_in_storm(counter_for_prediction=0, gif = false)
+function run_ensemble_enkf_in_storm(counter_for_prediction, plot_gif)
     mode["create_data"] = false
     mode["use_ensembles"] = true
     mode["use_Kalman"] = true
@@ -312,7 +312,7 @@ function run_ensemble_enkf_in_storm(counter_for_prediction=0, gif = false)
 
     mean = collapse_full_state_data(full_state_data, mode)
     mean_error = 0#mean_squared_error(mean, observed_data)
-    if gif
+    if plot_gif
         anim = @animate for i ∈ 1:(length(s["t"])-1)
             plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
         end
@@ -324,7 +324,7 @@ function run_ensemble_enkf_in_storm(counter_for_prediction=0, gif = false)
 end
 
 
-function comparison_prediciton_noKalman(counter_for_prediction=0, gif = false)
+function comparison_prediciton_noKalman(counter_for_prediction, plot_gif)
     mode["create_data"] = false
     mode["use_ensembles"] = true
     mode["use_Kalman"] = false
@@ -345,7 +345,7 @@ function comparison_prediciton_noKalman(counter_for_prediction=0, gif = false)
     
     mean = collapse_full_state_data(full_state_data, mode)
     mean_error = 0#mean_squared_error(mean, observed_data)
-    if gif
+    if plot_gif
         anim = @animate for i ∈ 1:(length(s["t"])-1)
             plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
         end
@@ -362,17 +362,15 @@ en = [120, 123, 126, 129, 132, 135, 138, 144, 150] #120 entsprich ab stunde 28 h
 error_ENKF = zeros(Float64, length(en))
 error_NoENKF = zeros(Float64, length(en))
 s = create_settings()
-_ = initialize!(settings)
+_ = initialize!(s)
 
 for n in en
-    state_data_Strom_ENKF, observed_data_Strom_ENKF, error_ENKF_ = run_ensemble_enkf_in_storm(n)
-    comparison_data_storm_noENKF, _, error_NoENKF_ = comparison_prediciton_noKalman(n)
+    state_data_Strom_ENKF, observed_data_Strom_ENKF, error_ENKF_ = run_ensemble_enkf_in_storm(n, false)
+    comparison_data_storm_noENKF, _, error_NoENKF_ = comparison_prediciton_noKalman(n, false)
     """error_ENKF[n] = error_ENKF_
     error_NoENKF[n] = error_NoENKF_"""
 
     compare_forecasting(state_data_Strom_ENKF, comparison_data_storm_noENKF, observed_data_Strom_ENKF, s, mode, "comparison_forecasting_$((288-n)*10/60)_h", n)
 end
-
-
 ##########################
 ## Hier noch ne func die den error in einem plot plotted
