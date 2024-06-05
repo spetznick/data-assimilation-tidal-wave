@@ -314,7 +314,7 @@ function compare_forecasting(forecasting_1, forecasting_2, obs_data, settings, m
     
     t = t[end-x_value : end-x_max]
     plots = []
-    for i = 1:nseries
+    for i = nseries - 3:nseries
         p = plot(seconds_to_hours .* t, forecasting_1[i, end-x_min:end-x_max],label="ENKF", linecolor=:blue, ylabel="Waterlevel [m]", legend=:bottomright)
         plot!(p, seconds_to_hours .* t[1:end], forecasting_2[i, end-x_min:end-x_max],label="no ENKF", linecolor=:green)
         plot!(p, seconds_to_hours .* t[1:end], obs_data[i, end-x_min:end-x_max],label= "Observations", linecolor=:black,)
@@ -343,7 +343,7 @@ function plot_series_with_name(series_data, obs_data, settings, mode, name, x_va
     series_data = series_data[ilocs, :]
     ntimes = min(length(t), size(obs_data, 2))
     plots = []
-    for i = 1:nseries
+    for i = nseries - 3:nseries
         p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, ylabel="Waterlevel [m]", label="")
         
         plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label="")

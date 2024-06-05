@@ -311,14 +311,14 @@ function run_ensemble_enkf_in_storm(counter_for_prediction=0)
     plot_series_with_name(series_data, observed_data, settings, mode, "enkf_in_storm$(add)", counter_for_prediction)
 
     mean = collapse_full_state_data(full_state_data, mode)
-    mean_error = mean_squared_error(mean, observed_data)
+    mean_error = 0#mean_squared_error(mean, observed_data)
 
-    """anim = @animate for i ∈ 1:(length(s["t"])-1)
+    anim = @animate for i ∈ 1:(length(s["t"])-1)
         plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
     end
 
     gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
-    println("gif saved at $(mode["gif_filename"])")"""
+    println("gif saved at $(mode["gif_filename"])")
     return full_state_data, observed_data, mean_error
 end
 
@@ -343,27 +343,30 @@ function comparison_prediciton_noKalman(counter_for_prediction=0)
     plot_series_with_name(series_data, observed_data, settings, mode, "no enkf_in_storm$(add)", counter_for_prediction)
     
     mean = collapse_full_state_data(full_state_data, mode)
-    mean_error = mean_squared_error(mean, observed_data)
+    mean_error = 0#mean_squared_error(mean, observed_data)
     
-    """anim = @animate for i ∈ 1:(length(s["t"])-1)
+    anim = @animate for i ∈ 1:(length(s["t"])-1)
         plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
     end
 
     gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
-    println("gif saved at $(mode["gif_filename"])")"""
+    println("gif saved at $(mode["gif_filename"])")
     return full_state_data, observed_data, mean_error
 end
 
 
 
-en = [120, 123, 126, 129, 132, 135, 138] #entspricht ab stunde 35, sieht dann nice aus Gute werte für den peak sind 120, 123, 126, 129, 132, 135, 138 entspricht ab stunde 20, 30 min schritte
+en = [120]#, 123, 126, 129, 132, 135, 138] #entspricht ab stunde 35, sieht dann nice aus Gute werte für den peak sind 120, 123, 126, 129, 132, 135, 138 entspricht ab stunde 20, 30 min schritte
 error_ENKF = zeros(Float64, length(en))
 error_NoENKF = zeros(Float64, length(en))
+s = create_settings()
+_ = initialize!(settings)
+
 for n in en
     state_data_Strom_ENKF, observed_data_Strom_ENKF, error_ENKF_ = run_ensemble_enkf_in_storm(n)
     comparison_data_storm_noENKF, _, error_NoENKF_ = comparison_prediciton_noKalman(n)
-    error_ENKF[n] = error_ENKF_
-    error_NoENKF[n] = error_NoENKF_
+    """error_ENKF[n] = error_ENKF_
+    error_NoENKF[n] = error_NoENKF_"""
 
     compare_forecasting(state_data_Strom_ENKF, comparison_data_storm_noENKF, observed_data_Strom_ENKF, s, mode, "comparison_forecasting_$((288-n)*10/60)_h", n)
 end
