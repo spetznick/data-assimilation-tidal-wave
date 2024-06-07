@@ -286,7 +286,7 @@ function plot_series(t, series_data, obs_data, loc_names, mode)
         # Variances are so small that they are not visible in the plot for subsequent plots
         p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, label=["model"])
         ntimes = min(length(t), size(obs_data, 2))
-        plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label=["model", "measured"],dpi = 1000, foreground_color_legend = nothing, size = (800, 600))
+        plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label=["model", "measured"], dpi=1000, foreground_color_legend=nothing, size=(800, 600))
         title!(p, loc_names[i])
         xlabel!(p, "time [hours]")
         savefig(p, replace("figures/$(loc_names[i])$(enkf_suffix).png", " " => "_"))
@@ -294,10 +294,9 @@ function plot_series(t, series_data, obs_data, loc_names, mode)
     end
 end
 
-function compare_forecasting(forecasting_1, forecasting_2, obs_data, settings, mode, name, x_value = 0.0)
+function compare_forecasting(forecasting_1, forecasting_2, obs_data, settings, mode, name, x_value=0.0)
     forecasting_1 = collapse_full_state_data(forecasting_1, mode)
     forecasting_2 = collapse_full_state_data(forecasting_2, mode)
-    println("Plot at locations.",name)
     s = create_settings()
     _ = initialize!(settings)
     t = settings["t"]
@@ -311,28 +310,28 @@ function compare_forecasting(forecasting_1, forecasting_2, obs_data, settings, m
     forecasting_2 = forecasting_2[ilocs, :]
     ntimes = min(length(t), size(obs_data, 2))
     x_min = x_value
-    x_max = (x_value - 60) #20 = 20*10 min = 
-    
-    t = t[end-x_value : end-x_max]
+    x_max = (x_value - 60) #20 = 20*10 min =
+
+    t = t[end-x_value:end-x_max]
     plots = []
-    for i = nseries - 3:nseries
-        p = plot(seconds_to_hours .* t, forecasting_1[i, end-x_min:end-x_max],label="ENKF", linecolor=:blue, ylabel="Waterlevel [m]", legend=:bottomleft, dpi = 1000, foreground_color_legend = nothing, size = (800, 600))
-        plot!(p, seconds_to_hours .* t[1:end], forecasting_2[i, end-x_min:end-x_max],label="no ENKF", linecolor=:green)
-        plot!(p, seconds_to_hours .* t[1:end], obs_data[i, end-x_min:end-x_max],label= "Observations", linecolor=:black,)
+    for i = nseries-3:nseries
+        p = plot(seconds_to_hours .* t, forecasting_1[i, end-x_min:end-x_max], label="ENKF", linecolor=:blue, ylabel="Waterlevel [m]", legend=:bottomleft, dpi=1000, foreground_color_legend=nothing, size=(800, 600))
+        plot!(p, seconds_to_hours .* t[1:end], forecasting_2[i, end-x_min:end-x_max], label="no ENKF", linecolor=:green)
+        plot!(p, seconds_to_hours .* t[1:end], obs_data[i, end-x_min:end-x_max], label="Observations", linecolor=:black,)
 
         title!(p, loc_names[i])
         xlabel!(p, "time [hours]")
         push!(plots, p)
         sleep(0.05) # Slow down to avoid that the plotting backend starts complaining. This is a bug and should be fixed soon.
     end
-    
+
     p_combined = plot(plots..., layout=(2, 2))
     savefig(p_combined, replace("figures/$(name).png", " " => "_"))
 end
 
 
-function plot_series_with_name(series_data, obs_data, settings, mode, name, x_value = 0.0)
-    println("Plot at locations.",name)
+function plot_series_with_name(series_data, obs_data, settings, mode, name, x_value=0.0, covariances=nothing)
+    println("Plot at locations. ", name)
 
     t = settings["t"]
     ilocs = settings["ilocs"][mode["location_used"]]
@@ -344,25 +343,29 @@ function plot_series_with_name(series_data, obs_data, settings, mode, name, x_va
     series_data = series_data[ilocs, :]
     ntimes = min(length(t), size(obs_data, 2))
     plots = []
-    for i = nseries - 3:nseries
-        p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, ylabel="Waterlevel [m]", label=name,dpi = 1000, foreground_color_legend = nothing, size = (800, 600), legend=:topleft)
-        
+    for i = nseries-3:nseries
+        if isnothing(covariances)
+            p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, ylabel="Waterlevel [m]", label=name, dpi=1000, foreground_color_legend=nothing, size=(800, 600), legend=:topleft)
+        else
+            p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, ylabel="Waterlevel [m]", label=name, dpi=1000, foreground_color_legend=nothing, size=(800, 600), legend=:topleft, ribbon=sqrt.(covariances[i, :]))
+        end
         plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label="observations")
         if x_value != 0.0
-            vline!(p, [(length(t)-x_value)/60*10], linecolor=:red, legend=false, label="")  # add a vertical line at x_value
+            vline!(p, [(length(t) - x_value) / 60 * 10], linecolor=:red, legend=false, label="")  # add a vertical line at x_value
         end
         title!(p, loc_names[i])
         xlabel!(p, "time [hours]")
         push!(plots, p)
         sleep(0.05) # Slow down to avoid that the plotting backend starts complaining. This is a bug and should be fixed soon.
     end
-    
+
     # Create a separate legend plot
     legend_plot = plot(legend=true)
     plot!(legend_plot, [NaN, NaN], linecolor=[:blue, :black], label=["model", "measured"])
-    
+
     p_combined = plot(plots..., layout=(2, 2))
     savefig(p_combined, replace("figures/$(name).png", " " => "_"))
+    savefig(p_combined, replace("figures/$(name).pdf", " " => "_"))
 end
 
 
@@ -392,26 +395,26 @@ end
 function mean_error_meas_obs(X, observed_data, settings, mode)# lasse es erstmal so, nimmt den fulls state
     # Calculate the mean across the third dimension
     mean_X = mean(X, dims=2)
-    
+
     # Select the relevant locations based on the mode and settings
     mean_X_selected = mean_X[settings["ilocs"][mode["location_used"]], :, :]
-    
+
     # Reshape the mean_X_selected to a 2D array of size (4, 288)
     mean_X_selected = reshape(mean_X_selected, 4, 288)
-    
+
     # Calculate the error between the selected mean and observed data
     error = mean_X_selected .- observed_data
-    
+
     # Compute the mean error across the first dimension
     mean_error = mean(error, dims=1)
 
     # Create a helper array with zeros for plotting the ribbon
     helper = zeros(Float64, length(mean_X_selected[1, :]))
-    
+
     # Plot the mean error
-    p1 = plot(mean_error[:], 
-              xlabel="Time", ylabel="Mean Error", label="mean error", ylim=[-0.25, 0.25], legend=:topleft)
-    
+    p1 = plot(mean_error[:],
+        xlabel="Time", ylabel="Mean Error", label="mean error", ylim=[-0.25, 0.25], legend=:topleft)
+
     # Add the ribbon plot
     plot!(p1, helper, ribbon=[0.1, -0.1], color="black", fillalpha=0.5, label="Tolerance Range")
     savefig(p1, "figures/mean_error_meas_obs.png")
@@ -432,7 +435,7 @@ function bias_at_locations(data1, data2, names)
 end
 
 function bias_at_locations(data1, data2, names)
-    println("Computing bias at locations.",names)
+    println("Computing bias at locations.", names)
     biases = zeros(Float64, length(names))
     nseries = length(names)
     for i = 1:nseries
@@ -489,17 +492,22 @@ function compute_wave_propagation_speed(series_data, settings::Dict)
     return wave_speed
 end
 
-function build_latex_table_bias_rmse(biases, rmses, mode, names)
+function build_latex_table_bias_rmse(biases, rmses, names; mode=nothing, filename=nothing)
+    if isnothing(filename)
+        if isnothing(mode)
+            println("No mode or filename specified. Using default filename 'bias_rmse' for LaTeX table.")
+            filename = "bias_rmse"
+        else
+            filename = mode["latex_table_filename"]
+        end
+        filename = mode["latex_table_filename"]
+    end
+
     df = DataFrame(Locations=names, biases=biases, rmses=rmses)
     df[!, :biases] = round.(df[!, :biases]; digits=3)
     df[!, :rmses] = round.(df[!, :rmses]; digits=3)
     table = latexify(df, env=:table)
-    if mode["use_ensembles"]
-        enkf_suffix = "_ENKF"
-    else
-        enkf_suffix = ""
-    end
-    open("tables/q3_bias_rmse_table$(enkf_suffix).txt", "w") do io
+    open("tables/$(filename).txt", "w") do io
         println(io, table)
     end
 
@@ -516,7 +524,7 @@ function compute_statistics(series_data, observed_data, names, mode, n)
 
     # Optionally build LaTeX table
     if mode["build_latex_tables"]
-        build_latex_table_bias_rmse(biases, rmses, mode, names)
+        build_latex_table_bias_rmse(biases, rmses, names; mode)
     end
 end
 

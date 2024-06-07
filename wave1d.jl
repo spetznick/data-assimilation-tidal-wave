@@ -27,7 +27,7 @@ using Latexify
 using DataFrames
 
 plot_maps = false #true or false - plotting makes the runs much slower
-build_latex_tables = false #true or false - build latex tables
+build_latex_tables = true #true or false - build latex tables
 
 minutes_to_seconds = 60.0
 hours_to_seconds = 60.0 * 60.0
@@ -261,10 +261,10 @@ function simulate()
     biases = zeros(Float64, length(names))
     rmses = zeros(Float64, length(names))
     names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
-    biases = bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], names) # ignore first data points due to dynamic behaviour in the beginning
-    rmses = rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start:end], names) # ignore first data points due to dynamic behaviour in the beginning
+    biases = bias_at_locations(series_data[:, index_start:end], observed_data[:, index_start+1:end], names) # ignore first data points due to dynamic behaviour in the beginning
+    rmses = rmse_at_locations(series_data[:, index_start:end], observed_data[:, index_start+1:end], names) # ignore first data points due to dynamic behaviour in the beginning
     if build_latex_tables
-        build_latex_table_bias_rmse(biases, rmses, {"use_ensembles" => false}, names)
+        build_latex_table_bias_rmse(biases, rmses, names; filename="q3_table")
     end
     println("All figures have been saved to files.")
     if plot_maps
@@ -301,15 +301,5 @@ function compute_wave_propagation_speed(series_data, s::Dict)
     wave_speed = L / ((indices_after_lhs_max[1] - indices_local_maxima_left[start_idx]) * dt)
     return wave_speed
 end
-
-
-# function build_latex_table_bias_rmse(biases, rmses)
-#     names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
-#     df = DataFrame(Locations=names, biases=biases, rmses=rmses)
-#     table = latexify(df, env=:table)
-#     open("tables/q3_bias_rmse_table.txt", "w") do io
-#         println(io, table)
-#     end
-# end
 
 simulate()

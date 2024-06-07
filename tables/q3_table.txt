@@ -1,0 +1,9 @@
+\begin{tabular}{ccc}
+$Locations$ & $biases$ & $rmses$\\
+$Cadzand$ & $0.0$ & $0.0$\\
+$Vlissingen$ & $-0.038$ & $0.025$\\
+$Terneuzen$ & $-0.146$ & $0.039$\\
+$Hansweert$ & $-0.178$ & $0.039$\\
+$Bath$ & $-0.237$ & $0.025$\\
+\end{tabular}
+

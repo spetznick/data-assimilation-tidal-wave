@@ -15,6 +15,7 @@ include("function_file.jl")
 mode = Dict(
     "plot_maps" => false,  # true or false - plotting makes the runs much slower
     "build_latex_tables" => false,  # true or false - build latex tables
+    "latex_table_filename" => "error_table",
     "use_ensembles" => false,  # true or false - run simulations as ensemble
     "n_ensemble" => 50, # number of ensemble members
     "location_used" => 2:5,  # locations used in the analysis
@@ -88,7 +89,7 @@ function update_kalman(X_, L_matrix, H, observations, mode)
     observations = repeat(reshape(observations, size(observations, 1), 1), 1, size(H * X_, 2))
 
     # Update the state estimates with the Kalman gain
-    X = X_ + K_K * (observations - (H * X_))
+    X = X_ + K_K * (observations - (H * X_) + mode["measurement_noise"] * randn(size(observations)))
 
     return X
 end
@@ -125,7 +126,7 @@ function simulate_enkf(settings, mode, counter_for_prediction=0)
 
     for i = 1:nt
         #check whether we want to forecast or not
-        if  nt - counter_for_prediction < i
+        if nt - counter_for_prediction < i
             mode["use_Kalman"] = false
             mode["assimilate_left_bc"] = use_cadzand
         end
@@ -190,6 +191,45 @@ function collapse_full_state_data(full_state_data, mode; indices_like_ilocs=noth
     return series_data[indices_like_ilocs, :]
 end
 
+function run_ensemble_nokf_compare_to_measurements()
+    mode["num_ensembles"] = 500
+    mode["create_data"] = false
+    mode["use_ensembles"] = true
+    mode["use_Kalman"] = false
+    mode["with_observation_data"] = tide
+    mode["gif_filename"] = "ensemble_nokf_tide"
+    mode["assimilate_left_bc"] = use_cadzand
+    mode["build_latex_tables"] = true  # true or false - build latex tables
+    mode["latex_table_filename"] = "q4_table"
+    mode["plot_maps"] = true
+    mode["location_used"] = 1:5
+
+    settings = create_settings()
+    _ = initialize!(settings)
+
+    full_state_data, observed_data, cov_data = simulate_enkf(settings, mode)
+
+    series_data = collapse_full_state_data(full_state_data, mode)
+    plot_series_with_name(series_data, observed_data, settings, mode, "ensemble_nokf_tide", 0.0, cov_data)
+
+    # Compute error statistics
+    ilocs = settings["ilocs"][mode["location_used"]]
+    H_x = series_data[ilocs, :]
+    index_start = 62 # start at second rising tide
+    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    compute_statistics(H_x, observed_data[1:end, 2:end], names, mode, size(series_data)[2] - index_start)
+
+    for i in mode["location_used"]
+        println("Max std for $(names[i]) found at $(findmax(sqrt.(cov_data[ilocs[i], :])))")
+    end
+    anim = @animate for i ∈ 1:(length(settings["t"])-1)
+        plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
+    end
+
+    gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
+    println("gif saved at $(mode["gif_filename"])")
+end
+
 
 function run_synthetic_versus_ensemble_enkf()
     mode["create_data"] = false
@@ -208,7 +248,7 @@ function run_synthetic_versus_ensemble_enkf()
     series_data = collapse_full_state_data(full_state_data, mode)
     plot_series_with_name(series_data, observed_data, settings, mode, "enkf_versus_synthetic_use_cadzand")
 
-    anim = @animate for i ∈ 1:(length(s["t"])-1)
+    anim = @animate for i ∈ 1:(length(settings["t"])-1)
         plot_state_for_gif(series_data[:, i], cov_data, settings, observed_data, i, mode)
     end
 
@@ -232,7 +272,7 @@ function run_synthetic_versus_ensemble_enkf_nobc_info()
     series_data = collapse_full_state_data(full_state_data, mode)
     plot_series_with_name(series_data, observed_data, settings, mode, "enkf_versus_synthetic_nobc_use_zero")
 
-    anim = @animate for i ∈ 1:(length(s["t"])-1)
+    anim = @animate for i ∈ 1:(length(settings["t"])-1)
         plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
     end
 
@@ -254,7 +294,7 @@ function run_synthetic_versus_ensemble_nokf()
 
     full_state_data, observed_data, cov_data = simulate_enkf(settings, mode)
 
-    anim = @animate for i ∈ 1:(length(s["t"])-1)
+    anim = @animate for i ∈ 1:(length(settings["t"])-1)
         plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
     end
 
@@ -281,7 +321,7 @@ function run_simulation_and_create_synthetic_data()
         save(title, "synthetic data", full_state_data)
     end
 
-    anim = @animate for i ∈ 1:(length(s["t"])-1)
+    anim = @animate for i ∈ 1:(length(settings["t"])-1)
         measurements = H * full_state_data
         plot_state_for_gif(full_state_data[:, i], cov_data, settings, measurements, i, mode)
     end
@@ -313,7 +353,7 @@ function run_ensemble_enkf_in_storm(counter_for_prediction, plot_gif)
     mean = collapse_full_state_data(full_state_data, mode)
     mean_error = 0#mean_squared_error(mean, observed_data)
     if plot_gif
-        anim = @animate for i ∈ 1:(length(s["t"])-1)
+        anim = @animate for i ∈ 1:(length(settings["t"])-1)
             plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
         end
 
@@ -342,11 +382,11 @@ function comparison_prediciton_noKalman(counter_for_prediction, plot_gif)
     full_state_data, observed_data, cov_data = simulate_enkf(settings, mode, counter_for_prediction)
     series_data = collapse_full_state_data(full_state_data, mode)
     plot_series_with_name(series_data, observed_data, settings, mode, "no enkf_in_storm$(add)", counter_for_prediction)
-    
+
     mean = collapse_full_state_data(full_state_data, mode)
     mean_error = 0#mean_squared_error(mean, observed_data)
     if plot_gif
-        anim = @animate for i ∈ 1:(length(s["t"])-1)
+        anim = @animate for i ∈ 1:(length(settings["t"])-1)
             plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
         end
 
@@ -358,19 +398,21 @@ end
 
 
 
-en = [120, 123, 126, 129, 132, 135, 138, 144, 150] #120 entsprich ab stunde 28 haben wir keinen assimilation mehr. danach entsprechen 3 weitere zeitschritte, dass wir weitere 30 min vorher keine ass mehr haben.
-error_ENKF = zeros(Float64, length(en))
-error_NoENKF = zeros(Float64, length(en))
-s = create_settings()
-_ = initialize!(s)
+# en = [120, 123, 126, 129, 132, 135, 138, 144, 150] #120 entsprich ab stunde 28 haben wir keinen assimilation mehr. danach entsprechen 3 weitere zeitschritte, dass wir weitere 30 min vorher keine ass mehr haben.
+# error_ENKF = zeros(Float64, length(en))
+# error_NoENKF = zeros(Float64, length(en))
+# s = create_settings()
+# _ = initialize!(s)
 
-for n in en
-    state_data_Strom_ENKF, observed_data_Strom_ENKF, error_ENKF_ = run_ensemble_enkf_in_storm(n, false)
-    comparison_data_storm_noENKF, _, error_NoENKF_ = comparison_prediciton_noKalman(n, false)
-    """error_ENKF[n] = error_ENKF_
-    error_NoENKF[n] = error_NoENKF_"""
+# for n in en
+#     state_data_Strom_ENKF, observed_data_Strom_ENKF, error_ENKF_ = run_ensemble_enkf_in_storm(n, false)
+#     comparison_data_storm_noENKF, _, error_NoENKF_ = comparison_prediciton_noKalman(n, false)
+#     """error_ENKF[n] = error_ENKF_
+#     error_NoENKF[n] = error_NoENKF_"""
 
-    compare_forecasting(state_data_Strom_ENKF, comparison_data_storm_noENKF, observed_data_Strom_ENKF, s, mode, "comparison_forecasting_$((288-n)*10/60)_h", n)
-end
+#     compare_forecasting(state_data_Strom_ENKF, comparison_data_storm_noENKF, observed_data_Strom_ENKF, s, mode, "comparison_forecasting_$((288-n)*10/60)_h", n)
+# end
+
+run_ensemble_nokf_compare_to_measurements()
 ##########################
 ## Hier noch ne func die den error in einem plot plotted
