@@ -1,3 +1,4 @@
+
 @enum ObservationData begin
     tide = 1
     waterlevel = 2
@@ -425,16 +426,6 @@ end
 
 #About Statistics
 function bias_at_locations(data1, data2, names)
-    println("Computing bias at locations:", names)
-    biases = zeros(Float64, length(names))
-    nseries = length(names)
-    for i = 1:nseries
-        biases[i] = compute_bias(data1[i, :], data2[i, :])
-    end
-    return biases
-end
-
-function bias_at_locations(data1, data2, names)
     println("Computing bias at locations.", names)
     biases = zeros(Float64, length(names))
     nseries = length(names)
@@ -463,8 +454,19 @@ function compute_bias(data1::Vector, data2::Vector)
     return Statistics.mean(bias)
 end
 
+function compute_bias(data1::Vector, data2::Real)
+    bias = data1 .- data2
+    return Statistics.mean(bias)
+end
+
 function compute_rmse(data1::Vector, data2::Vector)
     residual = data1 - data2
+    rmse = 1 / length(residual) * sqrt(sum(residual .^ 2))
+    return rmse
+end
+
+function compute_rmse(data1::Vector, data2::Real)
+    residual = data1 .- data2
     rmse = 1 / length(residual) * sqrt(sum(residual .^ 2))
     return rmse
 end
@@ -511,6 +513,36 @@ function build_latex_table_bias_rmse(biases, rmses, names; mode=nothing, filenam
         println(io, table)
     end
 
+end
+
+function compute_bias_and_rmse_over_time(series_data, observed_data)
+    # Initialize arrays for biases and rmses over times
+    biases = zeros(Float64, size(series_data, 2))
+    rmses = zeros(Float64, size(series_data, 2))
+    # Compute biases and rmses over times
+    for i = 1:size(series_data, 2)
+        biases[i] = compute_bias(series_data[:, i], observed_data[:, i])
+        rmses[i] = compute_rmse(series_data[:, i], observed_data[:, i])
+    end
+    return biases, rmses
+end
+
+function plot_bias_and_rmse_over_time(biases_all_en_members, rmses_all_en_members, num_ensembles, fig_name, settings)
+    t = settings["t"]
+
+    p1 = plot()
+    p2 = plot()
+    println("Plotting bias and RMSE for different ensemble sizes.")
+    for (i, val) in enumerate(num_ensembles)
+        plot!(p1, seconds_to_hours .* t, biases_all_en_members[i, :], ylabel="bias [m]", label=nothing)
+        plot!(p2, seconds_to_hours .* t, rmses_all_en_members[i, :], label="N = $(val)", yscale=:log10, xlabel="Time [h]", ylabel="RMSE [m]", legend=:outerright)
+        # Have single legend for both plots and make it horizontal
+
+    end
+    p = plot(p1, p2, layout=(2, 1))
+    savefig(p, "figures/$(fig_name).png")
+    savefig(p, "figures/$(fig_name).pdf")
+    display(p)
 end
 
 function compute_statistics(series_data, observed_data, names, mode, n)

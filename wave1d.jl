@@ -189,18 +189,23 @@ end
 
 function plot_series(t, series_data, s, obs_data)
     # plot timeseries from model and observations
-    loc_names = s["loc_names"]
+    loc_names = s["loc_names"][2:5]
     nseries = length(loc_names)
+    println("nseries:", nseries)
+    plots = []
     for i = 1:nseries
         #fig=PyPlot.figure(i+1)
-        p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, label=["model"])
+        p = plot(seconds_to_hours .* t, series_data[i, :], linecolor=:blue, ylabel="Waterlevel [m]", label=["model"], dpi=1000, foreground_color_legend=nothing, size=(800, 600), legend=:topleft)
         ntimes = min(length(t), size(obs_data, 2))
         plot!(p, seconds_to_hours .* t[1:ntimes], obs_data[i, 1:ntimes], linecolor=:black, label=["model", "measured"])
         title!(p, loc_names[i])
         xlabel!(p, "time [hours]")
-        savefig(p, replace("figures/$(loc_names[i]).png", " " => "_"))
+        push!(plots, p)
         sleep(0.05) #Slow down to avoid that that the plotting backend starts complaining. This is a bug and should be fixed soon.
     end
+    p = plot(plots..., layout=(2, 2))
+    savefig(p, replace("figures/waterlevel_wave1d.png", " " => "_"))
+    savefig(p, replace("figures/waterlevel_wave1d.pdf", " " => "_"))
 end
 
 function simulate()
@@ -255,6 +260,7 @@ function simulate()
 
     #plot timeseries
     plot_series(t, series_data, s, observed_data)
+
 
     # compute Statistics
     index_start = 62 # start at second rising tide

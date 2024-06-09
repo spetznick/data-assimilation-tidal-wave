@@ -8,6 +8,8 @@ using Latexify
 using DataFrames
 using CSV
 using JLD
+# using GLM
+using Polynomials
 
 include("function_file.jl")
 
@@ -192,17 +194,18 @@ function collapse_full_state_data(full_state_data, mode; indices_like_ilocs=noth
 end
 
 function run_ensemble_nokf_compare_to_measurements()
-    mode["num_ensembles"] = 500
+    mode["num_ensembles"] = 50
     mode["create_data"] = false
     mode["use_ensembles"] = true
-    mode["use_Kalman"] = false
-    mode["with_observation_data"] = tide
-    mode["gif_filename"] = "ensemble_nokf_tide"
+    mode["use_Kalman"] = true
+    mode["with_observation_data"] = synthetic
+    mode["gif_filename"] = "enkf_bias_rmse"
+    mode["observation_file"] = "synthetic_0.2.jld"
     mode["assimilate_left_bc"] = use_cadzand
     mode["build_latex_tables"] = true  # true or false - build latex tables
-    mode["latex_table_filename"] = "q4_table"
+    mode["latex_table_filename"] = "q6_table_enkf_bias_rmse"
     mode["plot_maps"] = true
-    mode["location_used"] = 1:5
+    mode["location_used"] = 2:5
 
     settings = create_settings()
     _ = initialize!(settings)
@@ -210,20 +213,20 @@ function run_ensemble_nokf_compare_to_measurements()
     full_state_data, observed_data, cov_data = simulate_enkf(settings, mode)
 
     series_data = collapse_full_state_data(full_state_data, mode)
-    plot_series_with_name(series_data, observed_data, settings, mode, "ensemble_nokf_tide", 0.0, cov_data)
+    plot_series_with_name(series_data, observed_data, settings, mode, "enkf_bias_rmse", 0.0)
 
     # Compute error statistics
     ilocs = settings["ilocs"][mode["location_used"]]
     H_x = series_data[ilocs, :]
     index_start = 62 # start at second rising tide
-    names = ["Cadzand", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
-    compute_statistics(H_x, observed_data[1:end, 2:end], names, mode, size(series_data)[2] - index_start)
+    names = ["Bath", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    compute_statistics(H_x, observed_data[1:end, 2:end], names[mode["location_used"]], mode, size(series_data)[2] - index_start)
 
     for i in mode["location_used"]
-        println("Max std for $(names[i]) found at $(findmax(sqrt.(cov_data[ilocs[i], :])))")
+        println("Max std for $(names[i]) found at $(findmax(sqrt.(cov_data[settings["ilocs"][i], :])))")
     end
     anim = @animate for i ∈ 1:(length(settings["t"])-1)
-        plot_state_for_gif(full_state_data[:, :, i], cov_data, settings, observed_data, i, mode)
+        plot_state_for_gif(series_data[:, i], cov_data, settings, observed_data, i, mode)
     end
 
     gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
@@ -256,6 +259,7 @@ function run_synthetic_versus_ensemble_enkf()
     println("gif saved at $(mode["gif_filename"])")
 end
 
+
 function run_synthetic_versus_ensemble_enkf_nobc_info()
     mode["create_data"] = false
     mode["use_ensembles"] = true
@@ -280,6 +284,7 @@ function run_synthetic_versus_ensemble_enkf_nobc_info()
     println("gif saved at $(mode["gif_filename"])")
 end
 
+
 function run_synthetic_versus_ensemble_nokf()
     mode["create_data"] = false
     mode["use_ensembles"] = true
@@ -301,6 +306,7 @@ function run_synthetic_versus_ensemble_nokf()
     gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
     println("gif saved at $(mode["gif_filename"])")
 end
+
 
 function run_simulation_and_create_synthetic_data()
     mode["create_data"] = true
@@ -329,6 +335,7 @@ function run_simulation_and_create_synthetic_data()
     gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
     println("gif saved at $(mode["gif_filename"])")
 end
+
 
 function run_ensemble_enkf_in_storm(counter_for_prediction, plot_gif)
     mode["create_data"] = false
@@ -396,7 +403,77 @@ function comparison_prediciton_noKalman(counter_for_prediction, plot_gif)
     return full_state_data, observed_data, mean_error
 end
 
+function run_different_num_enkfs()
+    mode["create_data"] = false
+    mode["use_ensembles"] = true
+    mode["use_Kalman"] = true
+    mode["with_observation_data"] = synthetic
+    mode["observation_file"] = "synthetic_0.2.jld"
+    mode["gif_filename"] = "enkf_varying_membersize_synthetic_hansweert"
+    mode["assimilate_left_bc"] = use_cadzand
+    settings = create_settings()
+    _ = initialize!(settings)
 
+    # Allocate memory for the series data arrays
+    num_ensembles = [3, 4, 5, 6, 8, 10, 12, 15]
+    biases_all_en_members = zeros(Float64, length(num_ensembles), length(settings["t"]))
+    rmses_all_en_members = zeros(Float64, length(num_ensembles), length(settings["t"]))
+    for i = 1:length(num_ensembles)
+        mode["n_ensemble"] = num_ensembles[i]
+        full_state_data, observed_data, cov_data = simulate_enkf(settings, mode)
+        series_data = collapse_full_state_data(full_state_data, mode)
+        ilocs = settings["ilocs"][mode["location_used"][3:3]]
+        biases_all_en_members[i, :], rmses_all_en_members[i, :] = compute_bias_and_rmse_over_time(series_data[ilocs, :], observed_data[4:4, :])
+    end
+    plot_bias_and_rmse_over_time(biases_all_en_members, rmses_all_en_members, num_ensembles, "enkf_varying_membersize_synthetic_hansweert", settings)
+end
+
+function run_different_num_enkfs_compare_whole_state()
+    mode["create_data"] = false
+    mode["use_ensembles"] = true
+    mode["use_Kalman"] = true
+    mode["with_observation_data"] = synthetic
+    mode["observation_file"] = "synthetic_0.2.jld"
+    mode["gif_filename"] = "enkf_varying_membersize_synthetic_height_state_keep_ensembles_apart"
+    mode["assimilate_left_bc"] = keep_ensembles_apart
+    settings = create_settings()
+    _ = initialize!(settings)
+
+    # Allocate memory for the series data arrays
+    num_ensembles = rand(4:15, 100)
+    # num_ensembles = [3, 10, 50]
+    observed_data = load(mode["observation_file"], "synthetic data")
+    biases_all_en_members = zeros(Float64, length(num_ensembles), length(settings["t"]))
+    rmses_all_en_members = zeros(Float64, length(num_ensembles), length(settings["t"]))
+    for (i, val) in enumerate(num_ensembles)
+        mode["n_ensemble"] = val
+        full_state_data, _, cov_data = simulate_enkf(settings, mode)
+        series_data = collapse_full_state_data(full_state_data, mode)
+        biases_all_en_members[i, :], rmses_all_en_members[i, :] = compute_bias_and_rmse_over_time(series_data[1:2:end, :], observed_data[1:2:end, :])
+    end
+    # plot_bias_and_rmse_over_time(biases_all_en_members, rmses_all_en_members, num_ensembles, "enkf_varying_membersize_synthetic_height_state_keep_ensembles_apart", settings)
+    biases_sum_over_time = sum(abs.(biases_all_en_members), dims=2)
+    rmses_sum_over_time = sum(abs.(rmses_all_en_members), dims=2)
+    # Fit the linear regression model
+    # Calculate the mean of x and y
+    x = log.(2, Array(num_ensembles))
+    y = log.(2, biases_sum_over_time[:, 1])
+    y2 = log.(2, rmses_sum_over_time[:, 1])
+    # Define the polynomial degree
+    degree = 1
+    # f = fit(xs, ys) # degree = length(xs) - 1
+    f = Polynomials.fit(x, y, degree) # degree = 2
+    print(map(x -> round(x, digits=4), f))
+
+    p1 = scatter()
+    p2 = scatter()
+    scatter!(p1, x, y, label="Log2(Sum of biases over number of ensembles [m])")
+    plot!(p1, f, extrema(x)..., label="Linear regression")
+    scatter!(p2, x, y2, label="Log2(Sum of rmses over number of ensembles [m])", xlabel="log2(Number of ensembles)")
+    p = plot(p1, p2, layout=(2, 1))
+    savefig(p, "figures/enkf_varying_membersize_synthetic_height_state_keep_ensembles_apart_linfit.pdf")
+    # Compute linear regression for the rate of convergence on the bias
+end
 
 # en = [120, 123, 126, 129, 132, 135, 138, 144, 150] #120 entsprich ab stunde 28 haben wir keinen assimilation mehr. danach entsprechen 3 weitere zeitschritte, dass wir weitere 30 min vorher keine ass mehr haben.
 # error_ENKF = zeros(Float64, length(en))
@@ -413,6 +490,6 @@ end
 #     compare_forecasting(state_data_Strom_ENKF, comparison_data_storm_noENKF, observed_data_Strom_ENKF, s, mode, "comparison_forecasting_$((288-n)*10/60)_h", n)
 # end
 
-run_ensemble_nokf_compare_to_measurements()
+run_different_num_enkfs_compare_whole_state()
 ##########################
 ## Hier noch ne func die den error in einem plot plotted
