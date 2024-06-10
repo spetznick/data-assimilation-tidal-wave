@@ -17,7 +17,7 @@ include("function_file.jl")
 mode = Dict(
     "plot_maps" => false,  # true or false - plotting makes the runs much slower
     "build_latex_tables" => false,  # true or false - build latex tables
-    "latex_table_filename" => "error_table",
+    "latex_table_filename" => nothing,
     "use_ensembles" => false,  # true or false - run simulations as ensemble
     "n_ensemble" => 50, # number of ensemble members
     "location_used" => 2:5,  # locations used in the analysis
@@ -34,6 +34,7 @@ mode = Dict(
     "observation_file" => "groundtruth_0.2.jld", # filename of the observation file
     "gif_filename" => "fig_map_synthetic.gif",
     "assimilate_left_bc" => use_cadzand,
+    "initialisation" => nothing
 )
 
 minutes_to_seconds = 60.0
@@ -475,6 +476,116 @@ function run_different_num_enkfs_compare_whole_state()
     # Compute linear regression for the rate of convergence on the bias
 end
 
+function run_different_init_state_as_zero()
+    mode["create_data"] = false
+    mode["use_ensembles"] = true
+    mode["use_Kalman"] = true
+    mode["with_observation_data"] = synthetic
+    mode["observation_file"] = "synthetic_0.2.jld"
+    mode["gif_filename"] = "enkf_versus_synthetic_use_cadzand_4_init"
+    mode["assimilate_left_bc"] = use_cadzand
+    mode["build_latex_tables"] = true  # true or false - build latex tables
+    mode["latex_table_filename"] = "q8_bias_and_rmse"
+    mode["initialisation"] = zero
+
+    settings = create_settings()
+    _ = initialize!(settings)
+
+    full_state_data, observed_data, cov_data = simulate_enkf(settings, mode)
+
+    series_data = collapse_full_state_data(full_state_data, mode)
+    plot_series_with_name(series_data, observed_data, settings, mode, "enkf_versus_synthetic_use_cadzand_zero_init")
+
+    ilocs = settings["ilocs"][mode["location_used"]]
+    H_x = series_data[ilocs, :]
+    index_start = 20 # start at second rising tide
+    names = ["Bath", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    compute_statistics(H_x, observed_data[1:end, 2:end], names[mode["location_used"]], mode, size(series_data)[2] - index_start)
+
+
+    anim = @animate for i ∈ 1:(length(settings["t"])-1)
+        plot_state_for_gif(series_data[:, i], cov_data, settings, observed_data, i, mode)
+    end
+
+    gif(anim, "figures/$(mode["gif_filename"]).gif", fps=10)
+    println("gif saved at $(mode["gif_filename"])")
+end
+
+function run_enkf_twin_in_storm()
+    mode["create_data"] = false
+    mode["use_ensembles"] = false
+    mode["use_Kalman"] = false
+    mode["with_observation_data"] = waterlevel
+    mode["gif_filename"] = "noenkf_and_enkf_in_storm"
+    mode["assimilate_left_bc"] = use_cadzand# keep_ensembles_apart
+    mode["build_latex_tables"] = true  # true or false - build latex tables
+    mode["latex_table_filename"] = "q9_bias_and_rmse_noenkf"
+    settings = create_settings()
+    _ = initialize!(settings)
+
+    full_state_data_1, observed_data_1, cov_data = simulate_enkf(settings, mode, 0.0)
+
+    series_data_1 = collapse_full_state_data(full_state_data_1, mode)
+
+    ilocs = settings["ilocs"][mode["location_used"]]
+    H_x = series_data_1[ilocs, :]
+    index_start = 62 # start at second rising tide
+    names = ["Bath", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    compute_statistics(H_x, observed_data_1[1:end, 2:end], names[mode["location_used"]], mode, size(series_data_1)[2] - index_start)
+
+    mode["use_ensembles"] = true
+    mode["use_Kalman"] = true
+    mode["with_observation_data"] = waterlevel
+    mode["assimilate_left_bc"] = use_cadzand
+    mode["build_latex_tables"] = true  # true or false - build latex tables
+    mode["latex_table_filename"] = "q9_bias_and_rmse_enkf"
+    settings = create_settings()
+    _ = initialize!(settings)
+
+    full_state_data_2, observed_data_2, cov_data = simulate_enkf(settings, mode, 0.0)
+
+    series_data_2 = collapse_full_state_data(full_state_data_2, mode)
+
+    ilocs = settings["ilocs"][mode["location_used"]]
+    H_x_2 = series_data_2[ilocs, :]
+    index_start = 62 # start at second rising tide
+    names = ["Bath", "Vlissingen", "Terneuzen", "Hansweert", "Bath"]
+    compute_statistics(H_x_2, observed_data_2[1:end, 2:end], names[mode["location_used"]], mode, size(series_data_2)[2] - index_start)
+
+
+    name = "noenkf_and_enkf_in_storm"
+    println("Plot at locations. ", name)
+    t = settings["t"]
+    ilocs = settings["ilocs"][mode["location_used"]]
+    loc_names = settings["loc_names"][mode["location_used"]]
+    loc_names = replace.(loc_names, "Waterlevel at " => "")
+
+
+    nseries = length(loc_names)
+    series_data_1 = series_data_1[ilocs, :]
+    series_data_2 = series_data_2[ilocs, :]
+    ntimes = min(length(t), size(observed_data_2, 2))
+    plots = []
+    for i = nseries-3:nseries
+        p = plot(seconds_to_hours .* t, series_data_1[i, :], linecolor=:blue, ylabel="Waterlevel [m]", label="no EnKF", dpi=1000, foreground_color_legend=nothing, size=(800, 600), legend=:topleft)
+        plot!(p, seconds_to_hours .* t, series_data_2[i, :], linecolor=:red, ylabel="Waterlevel [m]", label="EnKF", dpi=1000, foreground_color_legend=nothing, size=(800, 600), legend=:topleft)
+        plot!(p, seconds_to_hours .* t[1:ntimes], observed_data_2[i, 1:ntimes], linecolor=:black, label="observations")
+        title!(p, loc_names[i])
+        xlabel!(p, "time [hours]")
+        push!(plots, p)
+        sleep(0.05) # Slow down to avoid that the plotting backend starts complaining. This is a bug and should be fixed soon.
+    end
+
+    # Create a separate legend plot
+    legend_plot = plot(legend=true)
+    plot!(legend_plot, [NaN, NaN], linecolor=[:blue, :black])
+
+    p_combined = plot(plots..., layout=(2, 2))
+    savefig(p_combined, replace("figures/$(mode["gif_filename"]).png", " " => "_"))
+    savefig(p_combined, replace("figures/$(mode["gif_filename"]).pdf", " " => "_"))
+
+end
+
 # en = [120, 123, 126, 129, 132, 135, 138, 144, 150] #120 entsprich ab stunde 28 haben wir keinen assimilation mehr. danach entsprechen 3 weitere zeitschritte, dass wir weitere 30 min vorher keine ass mehr haben.
 # error_ENKF = zeros(Float64, length(en))
 # error_NoENKF = zeros(Float64, length(en))
@@ -490,6 +601,6 @@ end
 #     compare_forecasting(state_data_Strom_ENKF, comparison_data_storm_noENKF, observed_data_Strom_ENKF, s, mode, "comparison_forecasting_$((288-n)*10/60)_h", n)
 # end
 
-run_different_num_enkfs_compare_whole_state()
+run_enkf_twin_in_storm()
 ##########################
 ## Hier noch ne func die den error in einem plot plotted

@@ -1,4 +1,7 @@
 
+@enum Initialisation begin
+    zero = 0
+end
 @enum ObservationData begin
     tide = 1
     waterlevel = 2
@@ -35,6 +38,10 @@ function construct_system!(settings, mode)
         X = zeros(Float64, size_x + 1, mode["n_ensemble"])
         for n in mode["n_ensemble"]
             X[:, n] = vcat(initialize!(settings)[1], [0]) # N(0) = 0
+        end
+        if mode["initialisation"] == zero
+            X[:, :] .= 4.0
+            println("Initialisation with 4.0")
         end
         full_state_data = zeros(Float64, size_x, mode["n_ensemble"], length(t))
         full_state_data[:, :, 1] = X[1:end-1, :]

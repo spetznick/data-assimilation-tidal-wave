@@ -1,0 +1,8 @@
+\begin{tabular}{ccc}
+$Locations$ & $biases$ & $rmses$\\
+$Vlissingen$ & $-0.109$ & $0.023$\\
+$Terneuzen$  & $-0.194$ & $0.026$\\
+$Hansweert$  & $-0.234$ & $0.026$\\
+$Bath$ &       $-0.276$ & $0.024$\\
+\end{tabular}
+
